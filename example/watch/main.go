@@ -21,7 +21,7 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	cm, err := typedcfg.NewBuilder[Config]().AddFile(os.Args[1]).WithWatch().Build(ctx)
+	cm, err := typedcfg.NewBuilder[Config]().AddFile(os.Args[1]).WithCreateIfMissing().WithWatch().Build(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}

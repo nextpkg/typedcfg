@@ -54,6 +54,24 @@ builder.AddProvider(mapProvider, nil)
 
 Here `rawbytes` and `json` are `github.com/knadh/koanf/providers/rawbytes` and `github.com/knadh/koanf/parsers/json`. Providers must bound their own I/O and own any resources they allocate; typedcfg does not close them or watch them automatically.
 
+## Create a missing configuration file
+
+Use `WithCreateIfMissing()` to initialize missing files from the fixed `default` tags in your configuration struct:
+
+```go
+cm := typedcfg.NewBuilder[Config]().
+    AddFile("config.yaml").
+    WithCreateIfMissing().
+    MustBuild()
+cfg := cm.Get()
+```
+
+Creation is opt-in and happens once during Build, for each missing AddFile path. JSON/YAML output uses the selected decoding tag (`json` by default), includes nested defaults, and creates missing parent directories. Each missing file receives the full defaults; when layering files, those generated values participate in the normal source order. Existing files, including invalid files, are never replaced. Environment and CLI overrides are only merged in memory and never written into the generated file.
+
+Files are written with owner-only permissions (0600), in newly created directories with 0700 permissions, subject to the platform's permission semantics. A complete temporary file is published with an exclusive hard link on the same filesystem; concurrent initializers cannot replace an existing file or expose partial output. Filesystems without hard-link support return a creation error. Temporary files are removed after publication or failure.
+
+Normal loading and validation follow creation; if validation fails (for example, a required setting has no default), the generated template remains for you to edit. `MustBuild` panics on creation/loading/validation errors. `Load` and `MustLoad` keep their strict missing-file behavior unless you use the Builder option. Deleting a watched file after startup reports an error and preserves the last snapshot; it does not regenerate it.
+
 ## Defaults and validation
 
 Defaults are applied before decoding, so explicit `false`, `0`, and empty strings override defaults. Missing keys retain defaults. `default` tags support primitive types, durations, string slices, and nested structs; see [defaults](defaults/README.md) for pointer behavior.
@@ -62,11 +80,14 @@ Validation uses `validate` tags from go-playground/validator. An optional `Valid
 
 ## Reload and optional watching
 
+`WithWatch()` enables automatic reload after a file change; `Load`/`MustLoad` alone do not enable watching. Keep the manager and call `cm.Get()` for each read of the current configuration: a previously saved `cfg := cm.Get()` remains the old snapshot and is not mutated in place.
+
 `cm.Reload()` builds a fresh merged state, applies defaults, validates, and atomically publishes it. Deleted keys disappear or return to their defaults. A parse/read/validation failure keeps the previous snapshot. Both manual and automatic reloads are serialized.
 
 ```go
 cm, err := typedcfg.NewBuilder[Config]().
     AddFile("config.yaml").
+    WithCreateIfMissing().
     WithWatch().
     Build(ctx)
 if err != nil { return err }
@@ -103,10 +124,9 @@ Examples share the root module and compile with the library:
 go run ./example/basic
 go run ./example/cli --server.port 9090 --enabled=false
 go run ./example/watch example/watch/config.yaml
+# Or provide a new path; the watch example initializes it from defaults.
 go test ./...
 go test -race ./...
 go vet ./...
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
 ```
-
-See [MIGRATION.md](MIGRATION.md) for migration from vcfg, including the repository/module rename and removed APIs.

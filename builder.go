@@ -23,10 +23,11 @@ type source struct {
 // Builder configures ordered sources. Later sources override earlier ones.
 // Configure it before Build; concurrent mutation is not supported.
 type Builder[T any] struct {
-	sources []source
-	watch   bool
-	tag     string
-	err     error
+	sources         []source
+	watch           bool
+	createIfMissing bool
+	tag             string
+	err             error
 }
 
 func NewBuilder[T any]() *Builder[T] { return &Builder[T]{tag: "json"} }
@@ -94,6 +95,14 @@ func (b *Builder[T]) WithTag(tag string) *Builder[T] {
 // or if a directory cannot be watched. The Build context bounds watcher lifetime.
 func (b *Builder[T]) WithWatch() *Builder[T] { b.watch = true; return b }
 
+// WithCreateIfMissing initializes missing AddFile sources from default tags at
+// Build time. Existing files are never overwritten. Environment/CLI values are
+// not written to disk. Reload does not recreate files deleted after startup.
+func (b *Builder[T]) WithCreateIfMissing() *Builder[T] {
+	b.createIfMissing = true
+	return b
+}
+
 func (b *Builder[T]) Build(ctx context.Context) (*ConfigManager[T], error) {
 	if b.err != nil {
 		return nil, b.err
@@ -106,6 +115,11 @@ func (b *Builder[T]) Build(ctx context.Context) (*ConfigManager[T], error) {
 	}
 	if reflect.TypeFor[T]().Kind() != reflect.Struct {
 		return nil, fmt.Errorf("configuration type must be a struct")
+	}
+	if b.createIfMissing {
+		if err := b.createMissingFiles(ctx); err != nil {
+			return nil, err
+		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cm := &ConfigManager[T]{sources: append([]source(nil), b.sources...), tag: b.tag, ctx: ctx, cancel: cancel, errors: make(chan error, 1)}
