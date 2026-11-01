@@ -79,6 +79,55 @@ Only 2xx responses are decoded. HTTP errors, oversized responses, parsing failur
 
 URL sources are not polled or watched: call `Reload()` when you want to fetch again. `WithWatch()` only watches AddFile sources, and `WithCreateIfMissing()` only creates local files. There is no automatic retry, disk cache, or remote-file creation.
 
+## Alibaba Cloud MSE Nacos
+
+Install the optional module `github.com/nextpkg/typedcfg/adapters/nacos` and use an official
+`nacos-sdk-go/v2` configuration client:
+
+```go
+cm := typedcfg.NewBuilder[Config]().
+    AddProvider(nacos.Provider(client, "app.yaml", "DEFAULT_GROUP"), yaml.Parser()).
+    AddEnv("APP_").MustBuild()
+```
+
+Here `yaml` is `github.com/knadh/koanf/parsers/yaml`; use `json.Parser()` for
+JSON content. The client selects the instance, namespace ID, and credentials;
+the provider selects DataId and Group (empty Group means `DEFAULT_GROUP`).
+The core module does not depend on the Nacos SDK. See the complete
+[Nacos example](adapters/nacos/example/main.go) for client initialization and cleanup.
+
+For MSE, use the instance's connection hostname and configure RAM AccessKey
+credentials with permission to read the target namespace/configuration; ensure
+the network and access whitelist allow SDK connections (normally ports 8848 and
+9848). The example reads `NACOS_HOST`, `NACOS_DATA_ID`, optional `NACOS_PORT`
+(default 8848), `NACOS_NAMESPACE_ID`, `NACOS_GROUP`, and
+`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET` from the
+environment. It reads YAML, prints only the port, and does not publish remote
+configuration. Supply credentials through your environment's secret mechanism.
+
+Build and Reload call the SDK's `GetConfig`; there is no automatic subscription
+or remote creation. Empty/missing content is an error; publish `{}` explicitly
+to use defaults only. Read, parse, or validation errors preserve the previous
+snapshot. The SDK can fall back to local cache unless `DisableUseSnapShot` is
+enabled; `NotLoadCacheAtStart` alone does not disable that fallback. Existing
+SDK failover files may also override remote data. The example disables snapshot
+fallback and uses a fresh temporary SDK directory.
+
+The application owns the SDK client: configure `TimeoutMs` and call
+`client.CloseClient()` after the manager is no longer used. SDK reads do not
+accept a context, so canceling Build or closing the manager cannot interrupt an
+in-flight SDK call; it must return before Close completes. SDK authentication,
+cache, logging, and connection policies remain client responsibilities.
+
+The opt-in integration test publishes and removes a unique test configuration
+on a disposable **local** Nacos server; its gRPC port must be the HTTP port plus
+1000:
+
+```sh
+cd adapters/nacos
+TYPEDCFG_NACOS_TEST_PORT=18848 go test -race . -run TestServerIntegration -count=1
+```
+
 ## Create a missing configuration file
 
 Use `WithCreateIfMissing()` to initialize missing files from the fixed `default` tags in your configuration struct:
@@ -143,7 +192,7 @@ Import `github.com/nextpkg/typedcfg/adapters/cliv3`. Selected flags override con
 
 ## Examples and development
 
-Examples share the root module and compile with the library:
+Core examples share the root module and compile with the library:
 
 ```sh
 go run ./example/basic
@@ -155,3 +204,9 @@ go test -race ./...
 go vet ./...
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
 ```
+
+The optional Nacos module has its own dependencies; run the same test, vet,
+and lint commands inside `adapters/nacos` as well. To test it against local
+core changes, run `go mod edit -replace github.com/nextpkg/typedcfg=../..`
+inside that directory, then remove the local override with
+`go mod edit -dropreplace github.com/nextpkg/typedcfg` before committing.

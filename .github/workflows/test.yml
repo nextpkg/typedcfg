@@ -16,10 +16,54 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
+          cache-dependency-path: |
+            go.sum
+            adapters/nacos/go.sum
+      - run: go mod edit -replace github.com/nextpkg/typedcfg=../..
+        working-directory: adapters/nacos
       - run: go test -race ./...
       - run: go vet ./...
+      - run: go test -race ./...
+        working-directory: adapters/nacos
+      - run: go vet ./...
+        working-directory: adapters/nacos
       - name: Lint
         if: matrix.go == 'stable'
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
+      - name: Lint Nacos adapter
+        if: matrix.go == 'stable'
+        working-directory: adapters/nacos
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
+  nacos-integration:
+    runs-on: ubuntu-latest
+    services:
+      nacos:
+        image: nacos/nacos-server:v2.5.1
+        env:
+          MODE: standalone
+          NACOS_AUTH_ENABLE: 'false'
+          JVM_XMS: 256m
+          JVM_XMX: 512m
+          JVM_XMN: 128m
+        ports:
+          - 127.0.0.1:18848:8848
+          - 127.0.0.1:19848:9848
+        options: >-
+          --health-cmd "curl -fsS http://localhost:8848/nacos/v1/console/health/readiness"
+          --health-interval 5s --health-timeout 3s --health-retries 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: |
+            go.sum
+            adapters/nacos/go.sum
+      - run: go mod edit -replace github.com/nextpkg/typedcfg=../..
+        working-directory: adapters/nacos
+      - run: go test -race . -run TestServerIntegration -count=1 -timeout 90s -v
+        working-directory: adapters/nacos
+        env:
+          TYPEDCFG_NACOS_TEST_PORT: '18848'
