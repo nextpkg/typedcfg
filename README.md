@@ -52,6 +52,33 @@ builder.AddProvider(mapProvider, nil)
 
 Here `rawbytes` and `json` are `github.com/knadh/koanf/providers/rawbytes` and `github.com/knadh/koanf/parsers/json`. Providers must bound their own I/O and own any resources they allocate; typedcfg does not close them or watch them automatically.
 
+## HTTP/HTTPS sources
+
+```go
+cm := typedcfg.NewBuilder[Config]().
+    AddURL("https://example.com/config.yaml").
+    AddEnv("APP_").
+    MustBuild()
+cfg := cm.Get()
+```
+
+`AddURL` fetches the URL with GET during Build and each `Reload()`. Later sources override it in the same way as local files. JSON/YAML parsing is selected from the URL path extension, ignoring query parameters; for endpoints without a supported extension, supply a parser explicitly.
+
+```go
+builder.AddURL("https://example.com/config", typedcfg.URLOptions{
+    Parser:   json.Parser(),
+    Timeout:  5 * time.Second,
+    MaxBytes: 2 << 20,
+    Headers:  http.Header{"Authorization": []string{"Bearer " + token}},
+})
+```
+
+Here `json` is `github.com/knadh/koanf/parsers/json`, with `time` and `net/http` from the standard library. Defaults are a 10-second timeout and a 1 MiB response-body limit. `Client` accepts a custom `*http.Client` for transport/TLS settings; typedcfg copies the client and headers, but a supplied transport remains shared and caller-owned. A shorter Client timeout still applies.
+
+Only 2xx responses are decoded. HTTP errors, oversized responses, parsing failures, and validation failures return an error (or panic through MustBuild); a failed Reload keeps the previous snapshot. Requests are canceled when the Build context is canceled or the manager is closed. Redirects are limited to ten visited requests and must retain the original scheme and host, including port. Use headers for credentials; URL userinfo and fragments are rejected.
+
+URL sources are not polled or watched: call `Reload()` when you want to fetch again. `WithWatch()` only watches AddFile sources, and `WithCreateIfMissing()` only creates local files. There is no automatic retry, disk cache, or remote-file creation.
+
 ## Create a missing configuration file
 
 Use `WithCreateIfMissing()` to initialize missing files from the fixed `default` tags in your configuration struct:

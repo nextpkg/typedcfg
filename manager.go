@@ -59,7 +59,13 @@ func (cm *ConfigManager[T]) Reload() error {
 	}
 	k := koanf.New(".")
 	for _, src := range cm.sources {
-		if err := k.Load(src.provider, src.parser); err != nil {
+		provider := src.provider
+		if remote, ok := provider.(*urlProvider); ok {
+			bound := *remote
+			bound.ctx = cm.ctx
+			provider = &bound
+		}
+		if err := k.Load(provider, src.parser); err != nil {
 			name := src.path
 			if name == "" {
 				name = fmt.Sprintf("%T", src.provider)
@@ -99,6 +105,7 @@ func (cm *ConfigManager[T]) report(err error) {
 func (cm *ConfigManager[T]) closeErrors() { cm.errorsOnce.Do(func() { close(cm.errors) }) }
 
 // Close stops and joins the watcher and prevents subsequent Reload calls.
+// It also cancels in-flight AddURL requests.
 // Concurrent/repeated calls are safe. Custom provider reads already in progress
 // must finish before Close returns; providers own their I/O timeouts/resources.
 func (cm *ConfigManager[T]) Close() error {
