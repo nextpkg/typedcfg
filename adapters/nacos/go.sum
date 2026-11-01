@@ -276,6 +276,8 @@ github.com/nacos-group/nacos-sdk-go/v2 v2.2.8 h1:lyt2ynw2+G4JywFUAM0qXCJ/nEA9ORs
 github.com/nacos-group/nacos-sdk-go/v2 v2.2.8/go.mod h1:pIv1y5pMAjqFNU4jo9fmbuBjiZqpeGCddKkv0Y12ysY=
 github.com/nextpkg/typedcfg v0.0.2-0.20261101065305-fdcdf71e5705 h1:BmGKnPCJC+zHPi/7FzcId6R345FJk2QXew5WGOiW5yA=
 github.com/nextpkg/typedcfg v0.0.2-0.20261101065305-fdcdf71e5705/go.mod h1:wgiA5Z+ql7n2UTAiMBqqhj1uMrdORSnoP8aDMJoK5is=
+github.com/nextpkg/typedcfg v0.0.2-0.20261101073135-35ff5ab89cc4 h1:P66f2o+97soDp4EpFp8A9kSo+nB5ZsfjBtXM/EstfbQ=
+github.com/nextpkg/typedcfg v0.0.2-0.20261101073135-35ff5ab89cc4/go.mod h1:wgiA5Z+ql7n2UTAiMBqqhj1uMrdORSnoP8aDMJoK5is=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e h1:fD57ERR4JtEqsWbfPhv4DMiApHyliiK5xCTNVSPiaAs=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
