@@ -17,7 +17,6 @@ require (
 	github.com/knadh/koanf/providers/env v1.1.0 // indirect
 	github.com/knadh/koanf/providers/file v1.2.1 // indirect
 	github.com/knadh/koanf/v2 v2.4.1
-	google.golang.org/genproto v0.0.0-20261019180522-ce908d29299b // indirect
 )
 
 require (
@@ -58,7 +57,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/nextpkg/typedcfg v0.0.2-0.20261101090812-e02d1eaaf350
+	github.com/nextpkg/typedcfg v0.0.2-0.20261101095134-60c3d54c47e5
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.12.2 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
@@ -80,4 +79,11 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
+)
+
+require github.com/nextpkg/typedcfg/advanced v0.0.0-20261101095429-75224b861d12
+
+require (
+	github.com/nextpkg/typedcfg/validator v0.0.0-20261101095329-6a16b7085393 // indirect
+	google.golang.org/genproto v0.0.0-20261019180522-ce908d29299b
 )

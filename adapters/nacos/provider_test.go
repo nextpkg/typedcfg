@@ -10,8 +10,8 @@ import (
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"github.com/nextpkg/typedcfg"
 	"github.com/nextpkg/typedcfg/adapters/nacos"
+	typedcfg "github.com/nextpkg/typedcfg/advanced"
 	"github.com/stretchr/testify/require"
 )
 

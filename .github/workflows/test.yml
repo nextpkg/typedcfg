@@ -18,15 +18,11 @@ jobs:
           go-version: ${{ matrix.go }}
           cache-dependency-path: |
             go.sum
-            adapters/nacos/go.sum
-      - run: go mod edit -replace github.com/nextpkg/typedcfg=../..
-        working-directory: adapters/nacos
-      - run: go test -race ./...
-      - run: go vet ./...
-      - run: go test -race ./...
-        working-directory: adapters/nacos
-      - run: go vet ./...
-        working-directory: adapters/nacos
+            **/go.sum
+      - name: Check all modules
+        run: ./scripts/with-modules.sh ./scripts/check.sh
+        env:
+          LINT: ${{ matrix.go == 'stable' && '1' || '0' }}
       - name: Build Nacos example as an external consumer
         shell: bash
         run: |
@@ -36,20 +32,14 @@ jobs:
           cp adapters/nacos/example/main.go "$consumer_dir/main.go"
           cd "$consumer_dir"
           go mod init example.com/nacos-consumer
-          go mod edit -replace "github.com/nextpkg/typedcfg=$repo_dir"
-          go mod edit -replace "github.com/nextpkg/typedcfg/adapters/nacos=$repo_dir/adapters/nacos"
+          for module in . advanced validator adapters/nacos; do
+            name="github.com/nextpkg/typedcfg"
+            if [[ "$module" != "." ]]; then name="$name/$module"; fi
+            go mod edit -replace "$name=$repo_dir/$module"
+          done
           go get github.com/nextpkg/typedcfg/adapters/nacos@v0.0.0
           go mod tidy
           go build ./...
-      - name: Lint
-        if: matrix.go == 'stable'
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-      - name: Lint Nacos adapter
-        if: matrix.go == 'stable'
-        working-directory: adapters/nacos
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)"
   nacos-integration:
     runs-on: ubuntu-latest
     services:
@@ -74,10 +64,7 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             go.sum
-            adapters/nacos/go.sum
-      - run: go mod edit -replace github.com/nextpkg/typedcfg=../..
-        working-directory: adapters/nacos
-      - run: go test -race . -run TestServerIntegration -count=1 -timeout 90s -v
-        working-directory: adapters/nacos
+            **/go.sum
+      - run: ./scripts/with-modules.sh bash -c 'cd adapters/nacos && go test -race . -run TestServerIntegration -count=1 -timeout 90s -v'
         env:
           TYPEDCFG_NACOS_TEST_PORT: '18848'
