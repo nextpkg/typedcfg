@@ -30,7 +30,7 @@ func TestReloadSnapshot(t *testing.T) {
 	writeConfig(t, path, `{"port":9000,"max_conns":25,"enabled":false}`)
 	cm, err := Load[testConfig](path)
 	require.NoError(t, err)
-	defer cm.Close()
+	t.Cleanup(func() { require.NoError(t, cm.Close()) })
 	old := cm.Get()
 	require.Equal(t, &testConfig{Port: 9000, MaxConns: 25, Enabled: false}, old)
 	for _, invalid := range []string{`{`, `{"port":-1}`} {
@@ -94,7 +94,7 @@ func TestEnvironmentUnderscores(t *testing.T) {
 	t.Setenv("TC_DATABASE__MAX_CONNS", "25")
 	cm, err := NewBuilder[Config]().AddEnv("TC_").Build(t.Context())
 	require.NoError(t, err)
-	defer cm.Close()
+	t.Cleanup(func() { require.NoError(t, cm.Close()) })
 	require.Equal(t, 25, cm.Get().Database.MaxConns)
 }
 
@@ -106,7 +106,7 @@ func TestWatchAtomicReplacementAndRecovery(t *testing.T) {
 	defer cancel()
 	cm, err := NewBuilder[testConfig]().AddFile(path).WithWatch().Build(ctx)
 	require.NoError(t, err)
-	defer cm.Close()
+	t.Cleanup(func() { require.NoError(t, cm.Close()) })
 	replace := func(data string) {
 		temp := filepath.Join(dir, "next.json")
 		writeConfig(t, temp, data)

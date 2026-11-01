@@ -36,7 +36,7 @@ func TestFlagsOverrideOnlyWhenSet(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				defer cm.Close()
+				t.Cleanup(func() { require.NoError(t, cm.Close()) })
 				require.Equal(t, tc.port, cm.Get().Server.Port)
 				require.Equal(t, tc.enabled, cm.Get().Enabled)
 				return nil

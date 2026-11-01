@@ -30,19 +30,15 @@ func TestConfigSourcePriority(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set environment variables that should override file values
-	os.Setenv("TEST_SERVER__HOST", "envhost")
-	os.Setenv("TEST_SERVER__PORT", "9090")
-	defer func() {
-		os.Unsetenv("TEST_SERVER__HOST")
-		os.Unsetenv("TEST_SERVER__PORT")
-	}()
+	t.Setenv("TEST_SERVER__HOST", "envhost")
+	t.Setenv("TEST_SERVER__PORT", "9090")
 
 	// Test 1: File only (no env override)
 	cm1, err := NewBuilder[PriorityConfig]().
 		AddFile(configFile).
 		Build(context.Background())
 	require.NoError(t, err)
-	defer cm1.Close()
+	t.Cleanup(func() { require.NoError(t, cm1.Close()) })
 
 	cfg1 := cm1.Get()
 	assert.Equal(t, "filehost", cfg1.Server.Host)
@@ -54,7 +50,7 @@ func TestConfigSourcePriority(t *testing.T) {
 		AddEnv("TEST_").     // Higher priority
 		Build(context.Background())
 	require.NoError(t, err)
-	defer cm2.Close()
+	t.Cleanup(func() { require.NoError(t, cm2.Close()) })
 
 	cfg2 := cm2.Get()
 	assert.Equal(t, "envhost", cfg2.Server.Host) // Should be overridden by env
@@ -66,7 +62,7 @@ func TestConfigSourcePriority(t *testing.T) {
 		AddFile(configFile). // Higher priority (added last)
 		Build(context.Background())
 	require.NoError(t, err)
-	defer cm3.Close()
+	t.Cleanup(func() { require.NoError(t, cm3.Close()) })
 
 	cfg3 := cm3.Get()
 	assert.Equal(t, "filehost", cfg3.Server.Host) // Should be overridden by file

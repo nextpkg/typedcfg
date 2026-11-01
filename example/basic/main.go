@@ -16,6 +16,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer cm.Close()
+	defer func() {
+		if err := cm.Close(); err != nil {
+			log.Printf("close configuration: %v", err)
+		}
+	}()
 	fmt.Printf("port=%d\n", cm.Get().Port)
 }

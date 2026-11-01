@@ -27,7 +27,11 @@ func main() {
 		if err != nil {
 			return err
 		}
-		defer cm.Close()
+		defer func() {
+			if err := cm.Close(); err != nil {
+				log.Printf("close configuration: %v", err)
+			}
+		}()
 		fmt.Printf("port=%d enabled=%t\n", cm.Get().Server.Port, cm.Get().Enabled)
 		return nil
 	}}

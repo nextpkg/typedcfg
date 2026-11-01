@@ -73,7 +73,7 @@ func (b *Builder[T]) AddProvider(provider koanf.Provider, parser koanf.Parser) *
 
 func isNil(v any) bool {
 	switch reflect.ValueOf(v).Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return reflect.ValueOf(v).IsNil()
 	}
 	return false

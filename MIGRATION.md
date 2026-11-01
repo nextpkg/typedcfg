@@ -2,6 +2,10 @@
 
 This is a breaking API/module migration from `github.com/nextpkg/vcfg` to `github.com/nextpkg/typedcfg`. The package name is `typedcfg`; there is no compatibility layer for the old application/plugin container.
 
+## Go version
+
+The current dependencies require Go 1.26.0 or newer (including validator/v10 v10.30.5); update the local toolchain and CI before migrating.
+
 ## Module and imports
 
 After the new code is merged, select a revision containing this module path:

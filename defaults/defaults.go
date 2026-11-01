@@ -1,6 +1,4 @@
-// Package defaults provides functionality for setting default values on struct fields
-// using struct tags. It supports various data types including primitives, slices,
-// nested structs, and pointers with automatic type conversion and recursive processing.
+// Package defaults applies default tags to zero-valued struct fields.
 package defaults
 
 import (
@@ -10,12 +8,9 @@ import (
 	"time"
 )
 
-// SetDefaults sets default values for struct fields using the "default" struct tag.
-// It recursively processes nested structs and handles various data types including
-// strings, integers, floats, booleans, slices, and pointers.
-//
-// The function only sets defaults for fields that have zero values, preserving
-// any existing non-zero values.
+// SetDefaults fills zero-valued fields from their default tags and recurses into
+// nested value structs. Nil pointers require their own default tag to be allocated;
+// existing non-nil pointers and collection elements are not traversed.
 //
 // Supported tag format: `default:"value"`
 //
@@ -29,18 +24,14 @@ import (
 //	    Tags     []string      `default:"tag1,tag2,tag3"`
 //	}
 //
-// Parameters:
-//   - ptr: A pointer to a struct that should have default values applied
-//
-// Returns:
-//   - error: An error if the operation fails, nil otherwise
+// Non-struct inputs are ignored; invalid default values return conversion errors.
 func SetDefaults(ptr any) error {
 	if ptr == nil {
 		return nil
 	}
 
 	v := reflect.ValueOf(ptr)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return nil
 	}
 
@@ -83,16 +74,7 @@ func SetDefaults(ptr any) error {
 	return nil
 }
 
-// setFieldValue sets a struct field's value based on its type and the provided string value.
-// It handles type conversion for various Go types including primitives, time.Duration,
-// slices, nested structs, and pointers.
-//
-// Parameters:
-//   - field: The reflect.Value of the field to set
-//   - value: The string representation of the value to set
-//
-// Returns:
-//   - error: An error if type conversion or assignment fails, nil otherwise
+// setFieldValue parses a default tag into a supported field type.
 func setFieldValue(field reflect.Value, value string) error {
 	switch field.Kind() {
 	case reflect.String:
@@ -153,7 +135,7 @@ func setFieldValue(field reflect.Value, value string) error {
 			return SetDefaults(field.Addr().Interface())
 		}
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Handle pointer fields
 		if field.IsNil() {
 			// Create new instance
@@ -172,18 +154,7 @@ func setFieldValue(field reflect.Value, value string) error {
 	return nil
 }
 
-// splitAndTrim splits a string by the specified delimiter and trims whitespace
-// from each resulting part. Empty parts after trimming are excluded from the result.
-//
-// This function is used internally for parsing comma-separated values in default tags
-// for slice fields.
-//
-// Parameters:
-//   - s: The string to split
-//   - delimiter: The delimiter to split by
-//
-// Returns:
-//   - []string: A slice of trimmed, non-empty parts
+// splitAndTrim splits a tag and discards whitespace-only elements.
 func splitAndTrim(s, delimiter string) []string {
 	if s == "" {
 		return nil

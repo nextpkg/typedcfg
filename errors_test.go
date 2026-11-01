@@ -172,9 +172,7 @@ func TestNewValidationError(t *testing.T) {
 	assert.Equal(t, originalErr, validationErr.Cause)
 }
 
-// TestErrorType_Coverage tests all error types for coverage
-func TestErrorType_Coverage(t *testing.T) {
-	// Test all error types for coverage
+func TestErrorTypeNames(t *testing.T) {
 	types := []ErrorType{
 		ErrorTypeUnknown,
 		ErrorTypeFileNotFound,

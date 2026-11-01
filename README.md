@@ -1,6 +1,6 @@
 # typedcfg
 
-Small, typed configuration snapshots for Go 1.24.2+: load ordered sources, apply defaults, validate, and read a snapshot.
+Small, typed configuration snapshots for Go 1.26.0+: load ordered sources, apply defaults, validate, and read a snapshot.
 
 Application services are initialized by the application. There is no plugin registry, global logger, or component lifecycle container.
 
@@ -22,7 +22,9 @@ type Config struct {
 func main() {
     cm, err := typedcfg.Load[Config]("config.yaml")
     if err != nil { log.Fatal(err) }
-    defer cm.Close()
+    defer func() {
+    if err := cm.Close(); err != nil { log.Printf("close configuration: %v", err) }
+}()
     fmt.Println(cm.Get().Port)
 }
 ```
@@ -71,7 +73,9 @@ cm, err := typedcfg.NewBuilder[Config]().
     WithWatch().
     Build(ctx)
 if err != nil { return err }
-defer cm.Close()
+defer func() {
+    if err := cm.Close(); err != nil { log.Printf("close configuration: %v", err) }
+}()
 
 for err := range cm.Errors() {
     log.Printf("configuration reload failed: %v", err)
@@ -105,6 +109,7 @@ go run ./example/watch example/watch/config.yaml
 go test ./...
 go test -race ./...
 go vet ./...
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
 ```
 
 See [MIGRATION.md](MIGRATION.md) for migration from vcfg, including the repository/module rename and removed APIs.

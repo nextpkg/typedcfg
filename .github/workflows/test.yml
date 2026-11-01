@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: ['1.24.2', 'stable']
+        go: ['1.26.0', 'stable']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,3 +18,8 @@ jobs:
           go-version: ${{ matrix.go }}
       - run: go test -race ./...
       - run: go vet ./...
+      - name: Lint
+        if: matrix.go == 'stable'
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"

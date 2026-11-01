@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type VcfgTestConfig struct {
+type TypedConfig struct {
 	Name    string `json:"name"`
 	Port    int    `json:"port"`
 	Enabled bool   `json:"enabled"`
@@ -25,7 +25,7 @@ func TestMustLoad(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.NotPanics(t, func() {
-			cm := MustLoad[VcfgTestConfig](configFile)
+			cm := MustLoad[TypedConfig](configFile)
 			assert.NotNil(t, cm)
 
 			// Verify config was loaded correctly
@@ -36,13 +36,13 @@ func TestMustLoad(t *testing.T) {
 			assert.True(t, config.Enabled)
 
 			// Clean up
-			cm.Close()
+			require.NoError(t, cm.Close())
 		})
 	})
 
 	t.Run("failed load should panic", func(t *testing.T) {
 		assert.Panics(t, func() {
-			MustLoad[VcfgTestConfig]("/nonexistent/config.json")
+			MustLoad[TypedConfig]("/nonexistent/config.json")
 		})
 	})
 
@@ -55,7 +55,7 @@ func TestMustLoad(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Panics(t, func() {
-			MustLoad[VcfgTestConfig](configFile)
+			MustLoad[TypedConfig](configFile)
 		})
 	})
 }
@@ -70,7 +70,7 @@ func TestMustBuild(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.NotPanics(t, func() {
-			cm := MustBuild[VcfgTestConfig](configFile)
+			cm := MustBuild[TypedConfig](configFile)
 			assert.NotNil(t, cm)
 
 			// Verify config was loaded correctly
@@ -81,13 +81,13 @@ func TestMustBuild(t *testing.T) {
 			assert.False(t, config.Enabled)
 
 			// Clean up
-			cm.Close()
+			require.NoError(t, cm.Close())
 		})
 	})
 
 	t.Run("failed build should panic", func(t *testing.T) {
 		assert.Panics(t, func() {
-			MustBuild[VcfgTestConfig]("/nonexistent/config.json")
+			MustBuild[TypedConfig]("/nonexistent/config.json")
 		})
 	})
 
@@ -108,7 +108,7 @@ func TestMustBuild(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.NotPanics(t, func() {
-			cm := MustBuild[VcfgTestConfig](configFile1, configFile2)
+			cm := MustBuild[TypedConfig](configFile1, configFile2)
 			assert.NotNil(t, cm)
 
 			// Verify merged config
@@ -119,7 +119,7 @@ func TestMustBuild(t *testing.T) {
 			assert.True(t, config.Enabled)
 
 			// Clean up
-			cm.Close()
+			require.NoError(t, cm.Close())
 		})
 	})
 }
@@ -132,7 +132,7 @@ func TestMustLoad_EmptyFile(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotPanics(t, func() {
-		cm := MustLoad[VcfgTestConfig](configFile)
+		cm := MustLoad[TypedConfig](configFile)
 		assert.NotNil(t, cm)
 
 		// Verify config has zero values
@@ -143,7 +143,7 @@ func TestMustLoad_EmptyFile(t *testing.T) {
 		assert.False(t, config.Enabled)
 
 		// Clean up
-		cm.Close()
+		require.NoError(t, cm.Close())
 	})
 }
 
@@ -155,7 +155,7 @@ func TestMustBuild_EmptyFile(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotPanics(t, func() {
-		cm := MustBuild[VcfgTestConfig](configFile)
+		cm := MustBuild[TypedConfig](configFile)
 		assert.NotNil(t, cm)
 
 		// Verify config has zero values
@@ -166,6 +166,6 @@ func TestMustBuild_EmptyFile(t *testing.T) {
 		assert.False(t, config.Enabled)
 
 		// Clean up
-		cm.Close()
+		require.NoError(t, cm.Close())
 	})
 }

@@ -1,6 +1,3 @@
-// Package typedcfg provides configuration management with comprehensive error handling.
-// This file defines error types and structures for detailed error reporting
-// across different configuration operations.
 package typedcfg
 
 import (
@@ -8,9 +5,7 @@ import (
 	"strings"
 )
 
-// ErrorType represents the category of configuration errors.
-// It provides a way to classify different types of failures that can occur
-// during configuration loading, parsing, validation, and management.
+// ErrorType categorizes a configuration failure.
 type ErrorType int
 
 const (
@@ -28,9 +23,7 @@ const (
 	ErrorTypeMergeFailure
 )
 
-// String returns the string representation of the error type.
-// This method implements the Stringer interface for better error reporting
-// and debugging purposes.
+// String returns the category name.
 func (et ErrorType) String() string {
 	switch et {
 	case ErrorTypeFileNotFound:
@@ -48,9 +41,7 @@ func (et ErrorType) String() string {
 	}
 }
 
-// ConfigError represents a structured configuration error with detailed context.
-// It provides information about the error type, source, descriptive message,
-// and the underlying cause for comprehensive error reporting.
+// ConfigError identifies a configuration failure and wraps its underlying cause.
 type ConfigError struct {
 	// Type categorizes the kind of error that occurred
 	Type ErrorType
@@ -62,9 +53,7 @@ type ConfigError struct {
 	Cause error
 }
 
-// Error implements the error interface by returning a formatted error message.
-// The message includes the error type, source, and descriptive text for
-// comprehensive error reporting.
+// Error includes the category, source, message, and underlying cause.
 func (e *ConfigError) Error() string {
 	var parts []string
 
@@ -89,12 +78,12 @@ func (e *ConfigError) Error() string {
 	return result
 }
 
-// Unwrap 返回底层错误
+// Unwrap returns the underlying cause.
 func (e *ConfigError) Unwrap() error {
 	return e.Cause
 }
 
-// Is 检查错误类型
+// Is matches another ConfigError by category.
 func (e *ConfigError) Is(target error) bool {
 	if ce, ok := target.(*ConfigError); ok {
 		return e.Type == ce.Type
@@ -102,7 +91,7 @@ func (e *ConfigError) Is(target error) bool {
 	return false
 }
 
-// NewConfigError 创建新的配置错误
+// NewConfigError constructs a categorized error.
 func NewConfigError(errType ErrorType, source, message string, cause error) *ConfigError {
 	return &ConfigError{
 		Type:    errType,
@@ -112,14 +101,12 @@ func NewConfigError(errType ErrorType, source, message string, cause error) *Con
 	}
 }
 
-// Convenience functions for creating errors
-
-// NewParseError 创建解析错误
+// NewParseError wraps a source, decoding, or default-value error.
 func NewParseError(source, message string, cause error) *ConfigError {
 	return NewConfigError(ErrorTypeParseFailure, source, message, cause)
 }
 
-// NewValidationError 创建验证错误
+// NewValidationError wraps a validation error.
 func NewValidationError(source, message string, cause error) *ConfigError {
 	return NewConfigError(ErrorTypeValidationFailure, source, message, cause)
 }
