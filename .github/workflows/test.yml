@@ -27,6 +27,20 @@ jobs:
         working-directory: adapters/nacos
       - run: go vet ./...
         working-directory: adapters/nacos
+      - name: Build Nacos example as an external consumer
+        shell: bash
+        run: |
+          repo_dir="$PWD"
+          consumer_dir="$(mktemp -d)"
+          trap 'rm -rf "$consumer_dir"' EXIT
+          cp adapters/nacos/example/main.go "$consumer_dir/main.go"
+          cd "$consumer_dir"
+          go mod init example.com/nacos-consumer
+          go mod edit -replace "github.com/nextpkg/typedcfg=$repo_dir"
+          go mod edit -replace "github.com/nextpkg/typedcfg/adapters/nacos=$repo_dir/adapters/nacos"
+          go get github.com/nextpkg/typedcfg/adapters/nacos@v0.0.0
+          go mod tidy
+          go build ./...
       - name: Lint
         if: matrix.go == 'stable'
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...

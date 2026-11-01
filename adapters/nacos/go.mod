@@ -17,6 +17,7 @@ require (
 	github.com/knadh/koanf/providers/env v1.1.0 // indirect
 	github.com/knadh/koanf/providers/file v1.2.1 // indirect
 	github.com/knadh/koanf/v2 v2.4.1 // indirect
+	google.golang.org/genproto v0.0.0-20261019180522-ce908d29299b // indirect
 )
 
 require (
