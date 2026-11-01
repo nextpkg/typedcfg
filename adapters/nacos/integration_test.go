@@ -3,18 +3,17 @@ package nacos_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/knadh/koanf/parsers/json"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/logger"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"github.com/nextpkg/typedcfg"
 	"github.com/nextpkg/typedcfg/adapters/nacos"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -69,8 +68,9 @@ func TestServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	waitContent(param.Content)
-	cm, err := typedcfg.NewBuilder[config]().AddProvider(nacos.Provider(client, param.DataId, param.Group), json.Parser()).WithWatch().WithPollInterval(500 * time.Millisecond).Build(context.Background())
+	cm, err := nacos.Load[config](context.Background(), net.JoinHostPort(host, portText), param.DataId, nacos.Options{Group: param.Group, NamespaceID: os.Getenv("TYPEDCFG_NACOS_TEST_NAMESPACE"), PollInterval: 500 * time.Millisecond, LogDir: filepath.Join(dir, "managed-logs")})
 	require.NoError(t, err)
+	logger.SetLogger(zap.NewNop().Sugar())
 	t.Cleanup(func() { require.NoError(t, cm.Close()) })
 	require.Equal(t, config{9000, "remote"}, *cm.Get())
 	param.Content = `{"port":9001}`

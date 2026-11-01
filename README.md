@@ -81,38 +81,76 @@ Enable automatic HTTP updates with `AddURL(address).WithWatch().WithPollInterval
 
 ## Alibaba Cloud MSE Nacos
 
-Install the optional module `github.com/nextpkg/typedcfg/adapters/nacos` and use an official
-`nacos-sdk-go/v2` configuration client:
+Install the optional module `github.com/nextpkg/typedcfg/adapters/nacos`:
+
+```go
+cm := nacos.MustLoad[Config]("127.0.0.1:8848", "app.yaml")
+defer cm.Close()
+cfg := cm.Get()
+```
+
+This creates the SDK client, loads and validates the configuration, and enables
+automatic updates. Startup errors panic; use `nacos.Load[Config](ctx, address,
+dataID, options...)` to handle errors. `cm.Close()` stops updates, closes the SDK
+client, and removes its temporary cache. Canceling the Load context also triggers
+cleanup; call Close to wait for it. Get, Reload, and Errors behave like the core
+manager. The core module does not import the Nacos SDK.
+
+Address is a hostname or IP with an optional port (default 8848); gRPC uses that
+port plus 1000. DataId extensions `.json`, `.yaml`, `.yml` select the parser; a
+DataId without an extension defaults to YAML. Other formats require Options.Parser.
+The default namespace is public and group is DEFAULT_GROUP. Environment variables
+are read once at startup:
+
+| Variables | Purpose |
+| --- | --- |
+| `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | MSE RAM credentials; both must be set together |
+| `NACOS_USERNAME`, `NACOS_PASSWORD` | Nacos username authentication; both must be set together |
+| `NACOS_NAMESPACE_ID`, `NACOS_GROUP` | Optional namespace ID and group |
+
+For MSE, supply the instance connection hostname and credentials authorized for
+the target namespace/configuration; ensure its network whitelist allows SDK
+connections. Environment values are literal; `${VAR}` expansion and automatic
+credential rotation are not performed.
+
+Optional settings keep the common path short:
+
+```go
+cm := nacos.MustLoad[Config]("127.0.0.1:8848", "app.yaml", nacos.Options{
+    Group: "MY_GROUP",        // Nonempty explicit values override environment defaults.
+    EnvPrefix: "APP_",        // Optional business overrides, such as APP_PORT=9090.
+    PollInterval: 5 * time.Second,
+})
+defer cm.Close()
+```
+
+The default SDK timeout is 5 seconds, with subscriptions and 30-second periodic
+refresh to recover from missed notifications. Timeout, Parser, NamespaceID and
+LogDir can also be set in Options. Each Load uses a fresh private cache and
+disables stale snapshot fallback. SDK logs remain under the user's cache directory
+at `typedcfg/nacos/log` by default (10 MiB rotation, one backup, seven-day retention).
+The SDK uses a process-global logger; applications needing full SDK control should
+use Provider instead. See the complete [watching example](adapters/nacos/example/main.go):
+set `NACOS_ADDRESS` and `NACOS_DATA_ID`, run it, change the remote configuration,
+and observe the printed port without restarting.
+
+For existing SDK clients or advanced connection settings, retain explicit ownership:
 
 ```go
 cm := typedcfg.NewBuilder[Config]().
     AddProvider(nacos.Provider(client, "app.yaml", "DEFAULT_GROUP"), yaml.Parser()).
-    AddEnv("APP_").WithWatch().MustBuild()
-defer cm.Close() // Stop subscriptions before closing the SDK client.
-// Read cm.Get() whenever the application needs the current snapshot.
+    WithWatch().MustBuild()
+defer cm.Close() // Stop the manager before calling client.CloseClient().
 ```
 
-Here `yaml` is `github.com/knadh/koanf/parsers/yaml`; use `json.Parser()` for
-JSON content. The client selects the instance, namespace ID, and credentials;
-the provider selects DataId and Group (empty Group means `DEFAULT_GROUP`).
-The core module does not depend on the Nacos SDK. See the complete
-[Nacos example](adapters/nacos/example/main.go) for client initialization and cleanup.
+Here `yaml` is `github.com/knadh/koanf/parsers/yaml`; use `json.Parser()` for JSON.
 
 The adapter pins SDK v2.2.8 for static AccessKey authentication: v2.3.5 has a
 data race between RAM credential refresh and request signing. Keep race testing
 enabled when upgrading the SDK; applications can override module versions, so
 the version selected by their dependency graph also needs verification.
 
-For MSE, use the instance's connection hostname and configure RAM AccessKey
-credentials with permission to read the target namespace/configuration; ensure
-the network and access whitelist allow SDK connections (normally ports 8848 and
-9848). The example reads `NACOS_HOST`, `NACOS_DATA_ID`, optional `NACOS_PORT`
-(default 8848), `NACOS_NAMESPACE_ID`, `NACOS_GROUP`, and
-`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET` from the
-environment. It reads YAML, prints only the port, and does not publish remote
-configuration. Supply credentials through your environment's secret mechanism.
-
-Build and Reload call the SDK's `GetConfig`. Add `.WithWatch()` to the builder to
+With Provider, Build and Reload call the SDK's `GetConfig`. Add `.WithWatch()` to the builder to
 subscribe through the SDK's `ListenConfig`; notifications automatically re-read
 all sources, validate, and publish a new snapshot. No application `Reload()` call
 is needed. `Close()` or Build-context cancellation removes subscriptions via
@@ -133,10 +171,9 @@ no remote creation. Empty/missing content is an error; publish `{}` explicitly
 to use defaults only. Read, parse, or validation errors preserve the previous
 snapshot. The SDK can fall back to local cache unless `DisableUseSnapShot` is
 enabled; `NotLoadCacheAtStart` alone does not disable that fallback. Existing
-SDK failover files may also override remote data. The example disables snapshot
-fallback and uses a fresh temporary SDK directory.
+SDK failover files may also override remote data. Load disables snapshot fallback and uses a fresh temporary cache directory.
 
-The application owns the SDK client: configure `TimeoutMs` and call
+When using Provider, the application owns the SDK client: configure `TimeoutMs` and call
 `client.CloseClient()` after the manager is no longer used. SDK reads do not
 accept a context, so canceling Build or closing the manager cannot interrupt an
 in-flight SDK call; it must return before Close completes. SDK authentication,

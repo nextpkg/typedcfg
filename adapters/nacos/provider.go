@@ -1,5 +1,6 @@
 // Package nacos adapts a Nacos SDK configuration client, including Alibaba Cloud
-// MSE Nacos, to a typedcfg source. The caller owns the SDK client's lifecycle.
+// MSE Nacos, to typed configuration. Load owns the SDK lifecycle; Provider
+// adapts a caller-owned SDK client.
 package nacos
 
 import (
