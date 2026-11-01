@@ -1,0 +1,70 @@
+name: Test
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.26.0', 'stable']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: |
+            go.sum
+            **/go.sum
+      - name: Check all modules
+        run: ./scripts/with-modules.sh ./scripts/check.sh
+        env:
+          LINT: ${{ matrix.go == 'stable' && '1' || '0' }}
+      - name: Build Nacos example as an external consumer
+        shell: bash
+        run: |
+          repo_dir="$PWD"
+          consumer_dir="$(mktemp -d)"
+          trap 'rm -rf "$consumer_dir"' EXIT
+          cp adapters/nacos/example/main.go "$consumer_dir/main.go"
+          cd "$consumer_dir"
+          go mod init example.com/nacos-consumer
+          for module in . advanced validator adapters/nacos; do
+            name="github.com/nextpkg/typedcfg"
+            if [[ "$module" != "." ]]; then name="$name/$module"; fi
+            go mod edit -replace "$name=$repo_dir/$module"
+          done
+          go get github.com/nextpkg/typedcfg/adapters/nacos@v0.0.0
+          go mod tidy
+          go build ./...
+  nacos-integration:
+    runs-on: ubuntu-latest
+    services:
+      nacos:
+        image: nacos/nacos-server:v2.5.1
+        env:
+          MODE: standalone
+          NACOS_AUTH_ENABLE: 'false'
+          JVM_XMS: 256m
+          JVM_XMX: 512m
+          JVM_XMN: 128m
+        ports:
+          - 127.0.0.1:18848:8848
+          - 127.0.0.1:19848:9848
+        options: >-
+          --health-cmd "curl -fsS http://localhost:8848/nacos/v1/console/health/readiness"
+          --health-interval 5s --health-timeout 3s --health-retries 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: |
+            go.sum
+            **/go.sum
+      - run: ./scripts/with-modules.sh bash -c 'cd adapters/nacos && go test -race . -run TestServerIntegration -count=1 -timeout 90s -v'
+        env:
+          TYPEDCFG_NACOS_TEST_PORT: '18848'

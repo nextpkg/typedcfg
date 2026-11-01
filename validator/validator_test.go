@@ -225,12 +225,9 @@ func TestValidate_NonStruct(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Non-struct types should not cause panics
-			// The go-playground/validator library handles these gracefully
+			// Exercise non-struct inputs without requiring a particular error.
 			err := Validate(tt.value)
-			// We don't assert specific behavior here as it depends on the validator library
-			// The important thing is that it doesn't panic
-			_ = err // Acknowledge that we're not checking the error
+			_ = err
 		})
 	}
 }
