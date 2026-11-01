@@ -1,5 +1,4 @@
 // Package typedcfg loads ordered configuration sources into validated, typed snapshots.
-// It does not initialize application services or modify global logging state.
 package typedcfg
 
 import "context"

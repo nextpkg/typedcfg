@@ -5,7 +5,9 @@ import (
 	"strings"
 )
 
-// ErrorType categorizes a configuration failure.
+// ErrorType categorizes a configuration failure. Loading currently wraps source
+// and decoding failures as ParseFailure and validation failures as ValidationFailure;
+// other categories are available to callers constructing their own ConfigError.
 type ErrorType int
 
 const (

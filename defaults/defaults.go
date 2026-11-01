@@ -24,7 +24,8 @@ import (
 //	    Tags     []string      `default:"tag1,tag2,tag3"`
 //	}
 //
-// Non-struct inputs are ignored; invalid default values return conversion errors.
+// Inputs other than a pointer to a struct are ignored. Tag parsing errors are
+// returned; application constraints and narrowing numeric overflow are not checked.
 func SetDefaults(ptr any) error {
 	if ptr == nil {
 		return nil

@@ -13,7 +13,7 @@ type Config struct {
 }
 ```
 
-Supported tags: strings, signed/unsigned integers, floats, booleans, `time.Duration`, comma-separated string slices, and pointers to these types. Nested value structs are traversed automatically. Unsupported field kinds do not receive a default.
+Supported tags: strings, signed/unsigned integers, floats, booleans, `time.Duration`, comma-separated string slices, and pointers to these types. Nested value structs are traversed automatically. Unsupported field kinds do not receive a default. This helper parses tags but does not validate application constraints or detect narrowing overflow when assigning numeric values to smaller field types.
 
 A nil pointer needs its own `default` tag to be allocated; for a struct pointer use `default:""` so nested defaults are visited. Non-nil pointers are preserved by this helper. Defaults are not recursively applied to collection elements or objects allocated later by the decoder. For straightforward predictable defaults, prefer nested value structs.
 

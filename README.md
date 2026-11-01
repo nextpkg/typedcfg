@@ -2,8 +2,6 @@
 
 Small, typed configuration snapshots for Go 1.26.0+: load ordered sources, apply defaults, validate, and read a snapshot.
 
-Application services are initialized by the application. There is no plugin registry, global logger, or component lifecycle container.
-
 ```go
 package main
 
@@ -66,11 +64,11 @@ cm := typedcfg.NewBuilder[Config]().
 cfg := cm.Get()
 ```
 
-Creation is opt-in and happens once during Build, for each missing AddFile path. JSON/YAML output uses the selected decoding tag (`json` by default), includes nested defaults, and creates missing parent directories. Each missing file receives the full defaults; when layering files, those generated values participate in the normal source order. Existing files, including invalid files, are never replaced. Environment and CLI overrides are only merged in memory and never written into the generated file.
+Creation is opt-in and happens once during Build, for each missing AddFile path. JSON/YAML output uses the selected decoding tag (`json` by default), includes nested defaults, and creates missing parent directories. Each missing file contains the fields serialized from a default-initialized struct using the selected tags; when layering files, those generated values participate in the normal source order. Existing files, including invalid files, are never replaced. Environment and CLI overrides are only merged in memory and never written into the generated file.
 
-Files are written with owner-only permissions (0600), in newly created directories with 0700 permissions, subject to the platform's permission semantics. A complete temporary file is published with an exclusive hard link on the same filesystem; concurrent initializers cannot replace an existing file or expose partial output. Filesystems without hard-link support return a creation error. Temporary files are removed after publication or failure.
+Files are written with owner-only permissions (0600), in newly created directories with 0700 permissions, subject to the platform's permission semantics. Creation requires hard-link support on the target filesystem. Concurrent initializers do not overwrite existing files or expose partially written content. Publication and temporary-file cleanup errors are returned to the caller.
 
-Normal loading and validation follow creation; if validation fails (for example, a required setting has no default), the generated template remains for you to edit. `MustBuild` panics on creation/loading/validation errors. `Load` and `MustLoad` keep their strict missing-file behavior unless you use the Builder option. Deleting a watched file after startup reports an error and preserves the last snapshot; it does not regenerate it.
+Normal loading and validation follow creation; if validation fails (for example, a required setting has no default), the generated template remains for you to edit. `MustBuild` panics on creation/loading/validation errors. `Load` and `MustLoad` return an error or panic for missing files; automatic creation is available through `Builder.WithCreateIfMissing()`. Deleting a watched file after startup reports an error and preserves the last snapshot; it does not regenerate it.
 
 ## Defaults and validation
 
@@ -100,7 +98,7 @@ for err := range cm.Errors() {
 }
 ```
 
-`WithWatch` requires at least one `AddFile` source. Watch setup failures are returned by `Build`. Parent directories are watched so atomic replacement of a target file works; unrelated filenames are ignored and target events are debounced for 50 ms. Missing/invalid files retain the previous snapshot and produce an error; restoring a valid file resumes updates. Watch setup begins before the initial load so changes during initialization are queued.
+`WithWatch` requires at least one `AddFile` source. Watch setup failures are returned by `Build`. Parent directories are watched so atomic replacement of a target file works; unrelated filenames are ignored and target events are debounced for 50 ms. Missing/invalid files retain the previous snapshot and produce an error; restoring a valid file resumes updates. Watching starts after any requested default-file creation and before the initial source read, so subsequent file events are queued during that read.
 
 `Errors()` buffers one pending asynchronous error; additional errors may be dropped until consumed. Canceling the Build context stops watching and closes the channel; `Close` also stops and joins the watcher. Without watching, the channel closes on `Close`. There are no automatic retries without a new file event or an explicit `Reload`.
 
@@ -114,7 +112,7 @@ The core package does not import urfave/cli. Inside a parsed `cli.Command.Action
 builder.AddProvider(cliv3.Provider(cmd, "server.port", "enabled"), nil)
 ```
 
-Import `github.com/nextpkg/typedcfg/adapters/cliv3`. Only set flags override configuration, including explicit false/zero; command names are never prepended. Use canonical flag names in the selection, even if the invocation uses aliases. Unselected flags such as `--config` stay outside the config map. See the executable [CLI example](example/cli/main.go).
+Import `github.com/nextpkg/typedcfg/adapters/cliv3`. Selected flags override configuration when urfave/cli reports them as set (`cmd.IsSet`), including values from its configured environment/file sources or programmatic `Set` calls. A flag's default `Value` alone does not override configuration; explicitly set false/zero values do. Command names are never prepended. Use canonical flag names in the selection, even if the invocation uses aliases. Unselected flags such as `--config` stay outside the config map. See the executable [CLI example](example/cli/main.go).
 
 ## Examples and development
 

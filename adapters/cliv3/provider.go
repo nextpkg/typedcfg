@@ -11,8 +11,9 @@ import (
 )
 
 // Provider reads selected flags by their canonical names from a parsed command.
-// Only explicitly set flags override configuration. Dots delimit nested fields;
-// command names and flag aliases are not added to configuration keys.
+// Flags override configuration when cmd.IsSet reports true, including values
+// supplied through urfave/cli sources or Set calls. Default Value alone is ignored.
+// Dots delimit nested fields; selected names are used without a command prefix.
 // Call inside Action and pass the result to AddProvider with a nil parser.
 func Provider(cmd *cli.Command, names ...string) *Flags {
 	return &Flags{cmd: cmd, names: append([]string(nil), names...)}
