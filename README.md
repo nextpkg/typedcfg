@@ -116,9 +116,14 @@ Build and Reload call the SDK's `GetConfig`. Add `.WithWatch()` to the builder t
 subscribe through the SDK's `ListenConfig`; notifications automatically re-read
 all sources, validate, and publish a new snapshot. No application `Reload()` call
 is needed. `Close()` or Build-context cancellation removes subscriptions via
-`CancelListenConfig`, but does not close the caller-owned SDK client. Use a
-dedicated client or a unique DataId/Group for each watched manager: the SDK's
-cancellation removes all listeners for that key on the same client. Watch setup
+`CancelListenConfig`, but does not close the caller-owned SDK client. The adapter rejects a second subscription for the same client pointer,
+DataId and Group with `nacos.ErrAlreadyWatched`, even through different Provider
+objects; a failed Build releases its reservation, and successful cancellation
+allows a new manager to subscribe. A failed cancellation retains the reservation
+to prevent overlapping ownership. Watched clients must be pointers (as the
+SDK client is). Do not also call the SDK's ListenConfig/CancelListenConfig for
+that key directly, or wrap one SDK client in multiple identities: external
+subscriptions are outside this adapter's ownership checks. Watch setup
 errors fail Build; failed reloads report through `Errors()` and preserve the last
 valid snapshot. Subscribed sources are also re-read every 30 seconds (adjust with
 `WithPollInterval`) to recover from missed notifications. SDK v2.2.8 can omit
@@ -202,7 +207,9 @@ for err := range cm.Errors() {
 
 `Errors()` buffers one pending asynchronous error; additional errors may be dropped until consumed. Canceling the Build context stops watching and closes the channel; `Close` also stops and joins the watcher. Without watching, the channel closes on `Close`. File failures retry on the next event or explicit `Reload`; remote sources also retry on each periodic refresh.
 
-`Get()` returns a **read-only** shared snapshot: do not mutate it or its nested maps, slices, or pointers. Readers may retain an old snapshot after a reload. `Close` is idempotent and safe concurrently with reads/reloads; it prevents further reloads but preserves the last snapshot. A custom provider read already in progress must finish before Close returns.
+`Get()` returns an **independent deep copy** of the current snapshot, including nested maps, slices, pointers, arrays, and interface values. Modifying one result does not affect the manager or another Get result. The copy represents one published version and remains unchanged by later reloads. If your application shares that same returned object between goroutines, it must still synchronize its own writes.
+
+Copying allocates and costs time proportional to the configuration data; fetch once per request/operation when several fields must use the same version. Snapshot publication also copies the decoded value to detach retained provider/validator references. Configuration is data: channels, functions, unsafe pointers, synchronization primitives, and unexported fields holding non-nil mutable references cannot be safely isolated and cause Build/Reload to fail, preserving any previous snapshot. `time.Time` is supported as a value with an immutable location. Custom providers and validators must not mutate data concurrently while loading/copying is in progress. `Close` is idempotent and safe concurrently with reads/reloads; it prevents further reloads but preserves the last snapshot. A custom provider read already in progress must finish before Close returns.
 
 ## Optional CLI adapter
 

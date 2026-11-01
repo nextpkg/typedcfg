@@ -17,7 +17,7 @@ import (
 var ErrClosed = errors.New("configuration manager is closed")
 
 // ConfigManager publishes validated snapshots. Get is safe concurrently with
-// Reload and Close. Callers must not mutate snapshots, including nested maps/slices.
+// Reload and Close. Each Get returns an independent deep copy.
 type ConfigManager[T any] struct {
 	sources      []source
 	tag          string
@@ -39,13 +39,18 @@ type ConfigManager[T any] struct {
 	errors       chan error
 }
 
-// Get returns the current read-only snapshot; existing snapshots remain valid
-// after Reload or Close. A nil/uninitialized manager returns nil.
+// Get returns an independent deep copy of the current snapshot. Mutating it does
+// not affect the manager or other Get calls. Sharing that copy across goroutines
+// still requires application synchronization. A nil/uninitialized manager returns nil.
 func (cm *ConfigManager[T]) Get() *T {
 	if cm == nil {
 		return nil
 	}
-	return cm.cfg.Load()
+	snapshot, err := snapshotCopy(cm.cfg.Load())
+	if err != nil {
+		panic("typedcfg: invalid internal snapshot: " + err.Error())
+	}
+	return snapshot
 }
 
 // Reload re-reads all sources into a fresh configuration. Failures leave the
@@ -91,7 +96,11 @@ func (cm *ConfigManager[T]) Reload() error {
 	if err := cm.ctx.Err(); err != nil {
 		return err
 	}
-	cm.cfg.Store(&cfg)
+	snapshot, err := snapshotCopy(&cfg)
+	if err != nil {
+		return NewParseError("snapshot", "configuration cannot be isolated", err)
+	}
+	cm.cfg.Store(snapshot)
 	return nil
 }
 

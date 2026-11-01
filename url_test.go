@@ -74,7 +74,7 @@ func TestURLReloadRetainsSnapshotOnFailure(t *testing.T) {
 		require.Error(t, err)
 		require.NotContains(t, err.Error(), "token=secret")
 		require.NotContains(t, err.Error(), "private error body")
-		require.Same(t, old, cm.Get())
+		require.Equal(t, old, cm.Get())
 	}
 	status.Store(200)
 	body.Store(`{}`)

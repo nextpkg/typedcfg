@@ -3,6 +3,8 @@ package nacos_test
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/knadh/koanf/parsers/json"
@@ -55,7 +57,7 @@ func TestReload(t *testing.T) {
 			if tc.err != nil {
 				require.ErrorIs(t, err, readErr)
 			}
-			require.Same(t, old, cm.Get())
+			require.Equal(t, old, cm.Get())
 		})
 	}
 	c.content, c.err = `{"port":9001}`, nil
@@ -118,4 +120,48 @@ func TestSubscriptionLifecycle(t *testing.T) {
 	require.ErrorIs(t, err, c.listenErr)
 	_, err = nacos.Provider(&client{}, "app.json", "").Watch(func(error) {})
 	require.ErrorContains(t, err, "does not support")
+}
+
+func TestDuplicateSubscriptionRejectedAcrossProviders(t *testing.T) {
+	c := &listenerClient{client: client{content: `{}`}}
+	var wg sync.WaitGroup
+	var rejected atomic.Int64
+	winners := make(chan func() error, 16)
+	start := make(chan struct{})
+	for range 16 {
+		wg.Go(func() {
+			<-start
+			stop, err := nacos.Provider(c, "shared.json", "DEFAULT_GROUP").Watch(func(error) {})
+			if err == nil {
+				winners <- stop
+			} else if errors.Is(err, nacos.ErrAlreadyWatched) {
+				rejected.Add(1)
+			} else {
+				t.Errorf("expected ownership conflict, got %v", err)
+			}
+		})
+	}
+	close(start)
+	wg.Wait()
+	require.Len(t, winners, 1)
+	require.EqualValues(t, 15, rejected.Load())
+	require.Zero(t, c.cancels)
+	stop := <-winners
+	require.NoError(t, stop())
+	next, err := nacos.Provider(c, "shared.json", "").Watch(func(error) {})
+	require.NoError(t, err)
+	require.NoError(t, next())
+	require.Equal(t, 2, c.cancels)
+}
+
+func TestFailedBuildReleasesSubscriptionOwnership(t *testing.T) {
+	c := &listenerClient{client: client{content: `{`}}
+	_, err := typedcfg.NewBuilder[config]().AddProvider(nacos.Provider(c, "bad.json", ""), json.Parser()).WithWatch().Build(t.Context())
+	require.Error(t, err)
+	require.Equal(t, 1, c.cancels)
+	c.content = `{}`
+	cm, err := typedcfg.NewBuilder[config]().AddProvider(nacos.Provider(c, "bad.json", ""), json.Parser()).WithWatch().Build(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, cm.Close())
+	require.Equal(t, 2, c.cancels)
 }

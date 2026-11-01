@@ -36,7 +36,7 @@ func TestReloadSnapshot(t *testing.T) {
 	for _, invalid := range []string{`{`, `{"port":-1}`} {
 		writeConfig(t, path, invalid)
 		require.Error(t, cm.Reload())
-		require.Same(t, old, cm.Get())
+		require.Equal(t, old, cm.Get())
 	}
 	writeConfig(t, path, `{}`)
 	require.NoError(t, cm.Reload())
@@ -122,9 +122,9 @@ func TestWatchAtomicReplacementAndRecovery(t *testing.T) {
 	require.Equal(t, 9000, cm.Get().Port)
 	replace(`{}`)
 	require.Eventually(t, func() bool { return cm.Get().Port == 8080 }, 3*time.Second, 10*time.Millisecond)
-	snapshot := cm.Get()
+	snapshot := cm.cfg.Load()
 	writeConfig(t, filepath.Join(dir, "unrelated.json"), `{}`)
-	require.Never(t, func() bool { return cm.Get() != snapshot }, 150*time.Millisecond, 10*time.Millisecond)
+	require.Never(t, func() bool { return cm.cfg.Load() != snapshot }, 150*time.Millisecond, 10*time.Millisecond)
 	cancel()
 	select {
 	case _, open := <-cm.Errors():
