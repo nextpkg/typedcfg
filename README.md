@@ -50,7 +50,7 @@ builder.AddProvider(rawbytes.Provider([]byte(`{"port":9090}`)), json.Parser())
 builder.AddProvider(mapProvider, nil)
 ```
 
-Here `rawbytes` and `json` are `github.com/knadh/koanf/providers/rawbytes` and `github.com/knadh/koanf/parsers/json`. Providers must bound their own I/O and own any resources they allocate; typedcfg does not close them or watch them automatically.
+Here `rawbytes` and `json` are `github.com/knadh/koanf/providers/rawbytes` and `github.com/knadh/koanf/parsers/json`. Providers must bound their own I/O and own any resources they allocate; typedcfg does not close them. Providers implementing `WatchProvider` can be subscribed with `WithWatch()`.
 
 ## HTTP/HTTPS sources
 
@@ -77,7 +77,7 @@ Here `json` is `github.com/knadh/koanf/parsers/json`, with `time` and `net/http`
 
 Only 2xx responses are decoded. HTTP errors, oversized responses, parsing failures, and validation failures return an error (or panic through MustBuild); a failed Reload keeps the previous snapshot. Requests are canceled when the Build context is canceled or the manager is closed. Redirects are limited to ten visited requests and must retain the original scheme and host, including port. Use headers for credentials; URL userinfo and fragments are rejected.
 
-URL sources are not polled or watched: call `Reload()` when you want to fetch again. `WithWatch()` only watches AddFile sources, and `WithCreateIfMissing()` only creates local files. There is no automatic retry, disk cache, or remote-file creation.
+Enable automatic HTTP updates with `AddURL(address).WithWatch().WithPollInterval(30 * time.Second)`. The interval defaults to 30 seconds and must be positive when specified. Each tick performs a full GET and reloads all sources; requests are serialized, with no overlapping polls. Failed fetches or invalid configurations preserve the last valid snapshot, report through `Errors()`, and are retried on the next tick. This is periodic polling, not server push; ETag/Last-Modified conditional requests are not used. Without `WithWatch`, URLs are fetched only at Build and explicit `Reload()`. `WithCreateIfMissing()` only creates local files; there is no disk cache or remote-file creation.
 
 ## Alibaba Cloud MSE Nacos
 
@@ -87,7 +87,9 @@ Install the optional module `github.com/nextpkg/typedcfg/adapters/nacos` and use
 ```go
 cm := typedcfg.NewBuilder[Config]().
     AddProvider(nacos.Provider(client, "app.yaml", "DEFAULT_GROUP"), yaml.Parser()).
-    AddEnv("APP_").MustBuild()
+    AddEnv("APP_").WithWatch().MustBuild()
+defer cm.Close() // Stop subscriptions before closing the SDK client.
+// Read cm.Get() whenever the application needs the current snapshot.
 ```
 
 Here `yaml` is `github.com/knadh/koanf/parsers/yaml`; use `json.Parser()` for
@@ -110,8 +112,19 @@ the network and access whitelist allow SDK connections (normally ports 8848 and
 environment. It reads YAML, prints only the port, and does not publish remote
 configuration. Supply credentials through your environment's secret mechanism.
 
-Build and Reload call the SDK's `GetConfig`; there is no automatic subscription
-or remote creation. Empty/missing content is an error; publish `{}` explicitly
+Build and Reload call the SDK's `GetConfig`. Add `.WithWatch()` to the builder to
+subscribe through the SDK's `ListenConfig`; notifications automatically re-read
+all sources, validate, and publish a new snapshot. No application `Reload()` call
+is needed. `Close()` or Build-context cancellation removes subscriptions via
+`CancelListenConfig`, but does not close the caller-owned SDK client. Use a
+dedicated client or a unique DataId/Group for each watched manager: the SDK's
+cancellation removes all listeners for that key on the same client. Watch setup
+errors fail Build; failed reloads report through `Errors()` and preserve the last
+valid snapshot. Subscribed sources are also re-read every 30 seconds (adjust with
+`WithPollInterval`) to recover from missed notifications. SDK v2.2.8 can omit
+callbacks on deletion or recreation; periodic refresh reports missing content
+and restores automatic updates after valid content is published again. There is
+no remote creation. Empty/missing content is an error; publish `{}` explicitly
 to use defaults only. Read, parse, or validation errors preserve the previous
 snapshot. The SDK can fall back to local cache unless `DisableUseSnapShot` is
 enabled; `NotLoadCacheAtStart` alone does not disable that fallback. Existing
@@ -165,7 +178,7 @@ Validation uses `validate` tags from go-playground/validator. An optional `Valid
 
 ## Reload and optional watching
 
-`WithWatch()` enables automatic reload after a file change; `Load`/`MustLoad` alone do not enable watching. Keep the manager and call `cm.Get()` for each read of the current configuration: a previously saved `cfg := cm.Get()` remains the old snapshot and is not mutated in place.
+`WithWatch()` enables file watching, HTTP polling, and subscriptions for `WatchProvider` sources; `Load`/`MustLoad` alone do not enable watching. Keep the manager and call `cm.Get()` for each read of the current configuration: a previously saved `cfg := cm.Get()` remains the old snapshot and is not mutated in place.
 
 `cm.Reload()` builds a fresh merged state, applies defaults, validates, and atomically publishes it. Deleted keys disappear or return to their defaults. A parse/read/validation failure keeps the previous snapshot. Both manual and automatic reloads are serialized.
 
@@ -185,9 +198,9 @@ for err := range cm.Errors() {
 }
 ```
 
-`WithWatch` requires at least one `AddFile` source. Watch setup failures are returned by `Build`. Parent directories are watched so atomic replacement of a target file works; unrelated filenames are ignored and target events are debounced for 50 ms. Missing/invalid files retain the previous snapshot and produce an error; restoring a valid file resumes updates. Watching starts after any requested default-file creation and before the initial source read, so subsequent file events are queued during that read.
+`WithWatch` requires at least one `AddFile`, `AddURL`, or `WatchProvider` source. Watch setup failures are returned by `Build`. Parent directories are watched so atomic replacement of a target file works; unrelated filenames are ignored and target events are debounced for 50 ms. Missing/invalid files retain the previous snapshot and produce an error; restoring a valid file resumes updates. Watching starts after any requested default-file creation and before the initial source read, so subsequent file events and provider notifications are queued during that read.
 
-`Errors()` buffers one pending asynchronous error; additional errors may be dropped until consumed. Canceling the Build context stops watching and closes the channel; `Close` also stops and joins the watcher. Without watching, the channel closes on `Close`. There are no automatic retries without a new file event or an explicit `Reload`.
+`Errors()` buffers one pending asynchronous error; additional errors may be dropped until consumed. Canceling the Build context stops watching and closes the channel; `Close` also stops and joins the watcher. Without watching, the channel closes on `Close`. File failures retry on the next event or explicit `Reload`; remote sources also retry on each periodic refresh.
 
 `Get()` returns a **read-only** shared snapshot: do not mutate it or its nested maps, slices, or pointers. Readers may retain an old snapshot after a reload. `Close` is idempotent and safe concurrently with reads/reloads; it prevents further reloads but preserves the last snapshot. A custom provider read already in progress must finish before Close returns.
 

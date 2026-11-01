@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 )
@@ -20,7 +21,9 @@ type Client interface {
 
 // Provider selects a configuration by DataId and Group. An empty group means
 // DEFAULT_GROUP. Pass the result to Builder.AddProvider with a JSON/YAML parser.
-// Each Build/Reload calls GetConfig; there is no automatic subscription.
+// Each Build/Reload calls GetConfig. WithWatch subscribes through ListenConfig.
+// Use a dedicated client or unique DataId/Group per watched manager: SDK
+// cancellation removes all listeners for that key on the same client.
 func Provider(client Client, dataID, group string) *Config {
 	if group == "" {
 		group = "DEFAULT_GROUP"
@@ -29,9 +32,11 @@ func Provider(client Client, dataID, group string) *Config {
 }
 
 type Config struct {
-	client Client
-	dataID string
-	group  string
+	client   Client
+	watchMu  sync.Mutex
+	watching bool
+	dataID   string
+	group    string
 }
 
 func (p *Config) Read() (map[string]any, error) {
@@ -64,4 +69,44 @@ func nilClient(client Client) bool {
 		return v.IsNil()
 	}
 	return false
+}
+
+// Watch subscribes to server changes. The manager re-reads and validates all
+// sources on notification. Stopping removes the subscription but leaves the
+// caller-owned SDK client open.
+func (p *Config) Watch(notify func(error)) (func() error, error) {
+	if p == nil || p.client == nil || nilClient(p.client) {
+		return nil, errors.New("nacos client is nil")
+	}
+	c, ok := p.client.(interface {
+		ListenConfig(vo.ConfigParam) error
+		CancelListenConfig(vo.ConfigParam) error
+	})
+	if !ok {
+		return nil, errors.New("nacos client does not support subscriptions")
+	}
+	if strings.TrimSpace(p.dataID) == "" || strings.TrimSpace(p.group) == "" {
+		return nil, errors.New("nacos data ID and group must not be blank")
+	}
+	p.watchMu.Lock()
+	defer p.watchMu.Unlock()
+	if p.watching {
+		return nil, errors.New("nacos provider is already watched")
+	}
+	param := vo.ConfigParam{DataId: p.dataID, Group: p.group, OnChange: func(_, _, _, _ string) { notify(nil) }}
+	if err := c.ListenConfig(param); err != nil {
+		return nil, fmt.Errorf("listen Nacos configuration: %w", err)
+	}
+	p.watching = true
+	var once sync.Once
+	var stopErr error
+	return func() error {
+		once.Do(func() {
+			p.watchMu.Lock()
+			defer p.watchMu.Unlock()
+			stopErr = c.CancelListenConfig(vo.ConfigParam{DataId: p.dataID, Group: p.group})
+			p.watching = false
+		})
+		return stopErr
+	}, nil
 }

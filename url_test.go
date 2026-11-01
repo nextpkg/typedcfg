@@ -153,10 +153,89 @@ func TestURLRedirectsAndValidation(t *testing.T) {
 	}
 	_, err = NewBuilder[testConfig]().AddURL(server.URL+"/config.json", URLOptions{Timeout: -time.Second}).Build(t.Context())
 	require.Error(t, err)
-	_, err = NewBuilder[testConfig]().AddURL(server.URL + "/config.json").WithWatch().Build(t.Context())
-	require.ErrorContains(t, err, "AddFile")
+	cm, err = NewBuilder[testConfig]().AddURL(server.URL + "/config.json").WithWatch().Build(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, cm.Close())
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err = NewBuilder[testConfig]().AddURL(server.URL + "/config.json").Build(ctx)
 	require.True(t, errors.Is(err, context.Canceled))
+}
+
+func TestURLAutomaticReload(t *testing.T) {
+	var body atomic.Value
+	body.Store(`{"port":9000,"max_conns":25}`)
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		content := body.Load().(string)
+		if content == "offline" {
+			w.WriteHeader(503)
+			return
+		}
+		_, _ = fmt.Fprint(w, content)
+	}))
+	defer server.Close()
+	cm, err := NewBuilder[testConfig]().AddURL(server.URL + "/config.json").WithWatch().WithPollInterval(20 * time.Millisecond).Build(t.Context())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, cm.Close()) }()
+	old := cm.Get()
+	body.Store(`{"port":9001}`)
+	require.Eventually(t, func() bool { return cm.Get().Port == 9001 }, time.Second, 5*time.Millisecond)
+	require.Equal(t, 10, cm.Get().MaxConns)
+	require.Equal(t, 9000, old.Port)
+	for _, invalid := range []string{"offline", "{", `{"port":-1}`} {
+		body.Store(invalid)
+		select {
+		case err := <-cm.Errors():
+			_ = err
+		default:
+		}
+		select {
+		case err := <-cm.Errors():
+			require.Error(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("missing polling error")
+		}
+		require.Equal(t, 9001, cm.Get().Port)
+	}
+	body.Store(`{"port":9002}`)
+	require.Eventually(t, func() bool { return cm.Get().Port == 9002 }, time.Second, 5*time.Millisecond)
+	require.NoError(t, cm.Close())
+	count := calls.Load()
+	time.Sleep(60 * time.Millisecond)
+	require.Equal(t, count, calls.Load())
+	_, err = NewBuilder[testConfig]().WithPollInterval(0).Build(t.Context())
+	require.Error(t, err)
+}
+
+func TestURLPollingCancellation(t *testing.T) {
+	started := make(chan struct{})
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			_, _ = fmt.Fprint(w, `{}`)
+			return
+		}
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cm, err := NewBuilder[testConfig]().AddURL(server.URL + "/config.json").WithWatch().WithPollInterval(time.Millisecond).Build(ctx)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, cm.Close()) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("poll did not start")
+	}
+	cancel()
+	select {
+	case _, open := <-cm.Errors():
+		require.False(t, open)
+	case <-time.After(time.Second):
+		t.Fatal("poll did not stop")
+	}
 }

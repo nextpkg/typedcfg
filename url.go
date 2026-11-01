@@ -29,8 +29,8 @@ type URLOptions struct {
 }
 
 // AddURL adds an HTTP(S) GET source, fetched during Build and each Reload.
-// It accepts at most one options value. It does not poll, watch, or create remote
-// files. Redirects must retain the original scheme and host (including port).
+// It accepts at most one options value. WithWatch enables periodic reloads.
+// Redirects must retain the original scheme and host (including port).
 func (b *Builder[T]) AddURL(address string, options ...URLOptions) *Builder[T] {
 	p, parser, err := newURLProvider(address, options)
 	if err != nil {

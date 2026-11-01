@@ -86,3 +86,36 @@ func TestInvalidProvider(t *testing.T) {
 	_, err := nacos.Provider(&client{}, "a", "").Read()
 	require.Error(t, err)
 }
+
+type listenerClient struct {
+	client
+	listenErr error
+	cancels   int
+	callback  func(string, string, string, string)
+}
+
+func (c *listenerClient) ListenConfig(p vo.ConfigParam) error {
+	c.callback = p.OnChange
+	return c.listenErr
+}
+func (c *listenerClient) CancelListenConfig(vo.ConfigParam) error { c.cancels++; return nil }
+
+func TestSubscriptionLifecycle(t *testing.T) {
+	c := &listenerClient{client: client{content: `{}`}}
+	p := nacos.Provider(c, "app.json", "")
+	events := 0
+	stop, err := p.Watch(func(err error) { require.NoError(t, err); events++ })
+	require.NoError(t, err)
+	c.callback("", "", "", "")
+	require.Equal(t, 1, events)
+	_, err = p.Watch(func(error) {})
+	require.ErrorContains(t, err, "already watched")
+	require.NoError(t, stop())
+	require.NoError(t, stop())
+	require.Equal(t, 1, c.cancels)
+	c.listenErr = errors.New("unavailable")
+	_, err = p.Watch(func(error) {})
+	require.ErrorIs(t, err, c.listenErr)
+	_, err = nacos.Provider(&client{}, "app.json", "").Watch(func(error) {})
+	require.ErrorContains(t, err, "does not support")
+}

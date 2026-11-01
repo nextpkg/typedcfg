@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/knadh/koanf/v2"
@@ -18,20 +19,24 @@ var ErrClosed = errors.New("configuration manager is closed")
 // ConfigManager publishes validated snapshots. Get is safe concurrently with
 // Reload and Close. Callers must not mutate snapshots, including nested maps/slices.
 type ConfigManager[T any] struct {
-	sources    []source
-	tag        string
-	cfg        atomic.Pointer[T]
-	mu         sync.Mutex
-	closed     bool
-	ctx        context.Context
-	cancel     context.CancelFunc
-	watcher    *fsnotify.Watcher
-	files      map[string]struct{}
-	wg         sync.WaitGroup
-	closeOnce  sync.Once
-	errorsOnce sync.Once
-	closeErr   error
-	errors     chan error
+	sources      []source
+	tag          string
+	cfg          atomic.Pointer[T]
+	mu           sync.Mutex
+	closed       bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	watcher      *fsnotify.Watcher
+	changes      chan error
+	stops        []func() error
+	pollInterval time.Duration
+	pollRemote   bool
+	files        map[string]struct{}
+	wg           sync.WaitGroup
+	closeOnce    sync.Once
+	errorsOnce   sync.Once
+	closeErr     error
+	errors       chan error
 }
 
 // Get returns the current read-only snapshot; existing snapshots remain valid

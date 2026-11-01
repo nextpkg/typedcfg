@@ -2,10 +2,12 @@ package typedcfg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -25,6 +27,7 @@ type source struct {
 type Builder[T any] struct {
 	sources         []source
 	watch           bool
+	pollInterval    time.Duration
 	createIfMissing bool
 	tag             string
 	err             error
@@ -62,7 +65,7 @@ func (b *Builder[T]) AddEnv(prefix string) *Builder[T] {
 }
 
 // AddProvider pairs a provider with an explicit parser; nil uses provider.Read().
-// Custom sources are re-read on Reload but are not automatically watched.
+// WithWatch subscribes to providers implementing WatchProvider.
 func (b *Builder[T]) AddProvider(provider koanf.Provider, parser koanf.Parser) *Builder[T] {
 	if provider == nil || isNil(provider) {
 		b.err = fmt.Errorf("configuration provider is nil")
@@ -91,9 +94,21 @@ func (b *Builder[T]) WithTag(tag string) *Builder[T] {
 	return b
 }
 
-// WithWatch watches only files added via AddFile. Build fails if there are none
-// or if a directory cannot be watched. The Build context bounds watcher lifetime.
+// WithWatch watches AddFile sources, polls AddURL sources, and subscribes to
+// WatchProvider sources. The Build context bounds watcher lifetime.
 func (b *Builder[T]) WithWatch() *Builder[T] { b.watch = true; return b }
+
+// WithPollInterval sets the remote refresh interval used with WithWatch (default
+// 30 seconds). HTTP sources are polled; subscribed providers are re-read to
+// recover from missed notifications. Each tick reloads all sources serially.
+func (b *Builder[T]) WithPollInterval(interval time.Duration) *Builder[T] {
+	if interval <= 0 {
+		b.err = fmt.Errorf("poll interval must be positive")
+	} else {
+		b.pollInterval = interval
+	}
+	return b
+}
 
 // WithCreateIfMissing initializes missing AddFile sources from default tags at
 // Build time. Existing files are never overwritten. Environment/CLI values are
@@ -123,22 +138,23 @@ func (b *Builder[T]) Build(ctx context.Context) (*ConfigManager[T], error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cm := &ConfigManager[T]{sources: append([]source(nil), b.sources...), tag: b.tag, ctx: ctx, cancel: cancel, errors: make(chan error, 1)}
+	cm.pollInterval = b.pollInterval
+	if cm.pollInterval == 0 {
+		cm.pollInterval = 30 * time.Second
+	}
 	if b.watch {
 		if err := cm.prepareWatch(); err != nil {
 			cancel()
-			return nil, err
+			return nil, errors.Join(err, cm.stopWatching())
 		}
 	}
 	if err := cm.Reload(); err != nil {
-		if cm.watcher != nil {
-			_ = cm.watcher.Close()
-		}
 		cancel()
-		return nil, err
+		return nil, errors.Join(err, cm.stopWatching())
 	}
-	if cm.watcher != nil {
+	if b.watch {
 		cm.wg.Add(1)
-		go cm.watchFiles()
+		go cm.watchSources()
 	}
 	return cm, nil
 }

@@ -155,3 +155,46 @@ func TestConcurrentReloadAndClose(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// subscriptionSource exercises registration callbacks and failure cleanup
+// without depending on a remote SDK.
+type subscriptionSource struct {
+	notify func(error)
+	stops  int
+	data   string
+	err    error
+}
+
+func (p *subscriptionSource) Read() (map[string]any, error) { return nil, nil }
+func (p *subscriptionSource) ReadBytes() ([]byte, error)    { return []byte(p.data), nil }
+func (p *subscriptionSource) Watch(notify func(error)) (func() error, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	p.notify = notify
+	notify(nil) // Synchronous notifications must not deadlock Build.
+	return func() error { p.stops++; return nil }, nil
+}
+func TestSubscriptionCleanup(t *testing.T) {
+	for _, setupFailure := range []bool{false, true} {
+		p := &subscriptionSource{data: "{"}
+		b := NewBuilder[testConfig]().AddProvider(p, json.Parser()).WithWatch()
+		if setupFailure {
+			b.AddProvider(&subscriptionSource{err: errors.New("cannot subscribe")}, json.Parser())
+		}
+		_, err := b.Build(t.Context())
+		require.Error(t, err)
+		require.Equal(t, 1, p.stops)
+		p.notify(nil) // A late callback after failed Build remains harmless.
+	}
+	p := &subscriptionSource{data: `{}`}
+	ctx, cancel := context.WithCancel(t.Context())
+	cm, err := NewBuilder[testConfig]().AddProvider(p, json.Parser()).WithWatch().Build(ctx)
+	require.NoError(t, err)
+	cancel()
+	require.NoError(t, cm.Close())
+	require.Equal(t, 1, p.stops)
+	p.notify(errors.New("late"))
+	require.NoError(t, cm.Close())
+	require.Equal(t, 1, p.stops)
+}

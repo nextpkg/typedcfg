@@ -69,7 +69,7 @@ func TestServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	waitContent(param.Content)
-	cm, err := typedcfg.NewBuilder[config]().AddProvider(nacos.Provider(client, param.DataId, param.Group), json.Parser()).Build(context.Background())
+	cm, err := typedcfg.NewBuilder[config]().AddProvider(nacos.Provider(client, param.DataId, param.Group), json.Parser()).WithWatch().WithPollInterval(500 * time.Millisecond).Build(context.Background())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, cm.Close()) })
 	require.Equal(t, config{9000, "remote"}, *cm.Get())
@@ -78,16 +78,20 @@ func TestServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	waitContent(param.Content)
-	require.NoError(t, cm.Reload())
-	require.Equal(t, config{9001, "app"}, *cm.Get())
+	require.Eventually(t, func() bool { return *cm.Get() == (config{9001, "app"}) }, 15*time.Second, 100*time.Millisecond, "subscription did not update snapshot")
 	old := cm.Get()
 	param.Content = `{"port":-1}`
 	ok, err = client.PublishConfig(param)
 	require.NoError(t, err)
 	require.True(t, ok)
 	waitContent(param.Content)
-	require.Error(t, cm.Reload())
-	require.Same(t, old, cm.Get())
+	select {
+	case err := <-cm.Errors():
+		require.Error(t, err)
+	case <-time.After(15 * time.Second):
+		t.Fatal("subscription did not report invalid/deleted configuration")
+	}
+	require.Equal(t, *old, *cm.Get())
 	ok, err = client.DeleteConfig(param)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -97,6 +101,25 @@ func TestServerIntegration(t *testing.T) {
 		})
 		return err == nil && page != nil && page.TotalCount == 0
 	}, 15*time.Second, 200*time.Millisecond, "deleted configuration is still listed")
-	require.Error(t, cm.Reload())
-	require.Same(t, old, cm.Get())
+	// Periodic reconciliation covers SDK notifications missed on deletion.
+	select {
+	case err := <-cm.Errors():
+		require.Error(t, err)
+	case <-time.After(15 * time.Second):
+		t.Fatal("deletion did not report an asynchronous error")
+	}
+	require.Equal(t, *old, *cm.Get())
+	param.Content = `{"port":9002}`
+	ok, err = client.PublishConfig(param)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Eventually(t, func() bool { return cm.Get().Port == 9002 }, 15*time.Second, 100*time.Millisecond, "subscription did not recover after recreation")
+	require.NoError(t, cm.Close())
+	param.Content = `{"port":9003}`
+	ok, err = client.PublishConfig(param)
+	require.NoError(t, err)
+	require.True(t, ok)
+	waitContent(param.Content)
+	require.Equal(t, 9002, cm.Get().Port)
+
 }
