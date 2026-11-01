@@ -1,4 +1,4 @@
-package vcfg
+package typedcfg
 
 import (
 	"os"

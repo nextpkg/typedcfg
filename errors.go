@@ -1,7 +1,7 @@
-// Package vcfg provides configuration management with comprehensive error handling.
+// Package typedcfg provides configuration management with comprehensive error handling.
 // This file defines error types and structures for detailed error reporting
 // across different configuration operations.
-package vcfg
+package typedcfg
 
 import (
 	"fmt"
@@ -24,8 +24,6 @@ const (
 	ErrorTypeValidationFailure
 	// ErrorTypeWatchFailure indicates failure in file watching functionality
 	ErrorTypeWatchFailure
-	// ErrorTypePluginFailure indicates failure in plugin operations
-	ErrorTypePluginFailure
 	// ErrorTypeMergeFailure indicates failure to merge configuration sources
 	ErrorTypeMergeFailure
 )
@@ -43,8 +41,6 @@ func (et ErrorType) String() string {
 		return "ValidationFailure"
 	case ErrorTypeWatchFailure:
 		return "WatchFailure"
-	case ErrorTypePluginFailure:
-		return "PluginFailure"
 	case ErrorTypeMergeFailure:
 		return "MergeFailure"
 	default:

@@ -1,4 +1,4 @@
-package vcfg
+package typedcfg
 
 import (
 	"fmt"
@@ -18,7 +18,6 @@ func TestErrorType_String(t *testing.T) {
 		{"ParseFailure", ErrorTypeParseFailure, "ParseFailure"},
 		{"ValidationFailure", ErrorTypeValidationFailure, "ValidationFailure"},
 		{"WatchFailure", ErrorTypeWatchFailure, "WatchFailure"},
-		{"PluginFailure", ErrorTypePluginFailure, "PluginFailure"},
 		{"MergeFailure", ErrorTypeMergeFailure, "MergeFailure"},
 		{"Unknown", ErrorTypeUnknown, "Unknown"},
 		{"InvalidType", ErrorType(999), "Unknown"},
@@ -182,7 +181,6 @@ func TestErrorType_Coverage(t *testing.T) {
 		ErrorTypeParseFailure,
 		ErrorTypeValidationFailure,
 		ErrorTypeWatchFailure,
-		ErrorTypePluginFailure,
 		ErrorTypeMergeFailure,
 	}
 
@@ -192,7 +190,6 @@ func TestErrorType_Coverage(t *testing.T) {
 		"ParseFailure",
 		"ValidationFailure",
 		"WatchFailure",
-		"PluginFailure",
 		"MergeFailure",
 	}
 

@@ -1,150 +1,134 @@
-// Package vcfg provides a flexible configuration management system.
-// This file implements the Builder pattern for constructing ConfigManager instances
-// with various configuration sources and options.
-package vcfg
+package typedcfg
 
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"reflect"
 	"strings"
 
-	"github.com/knadh/koanf/providers/cliflagv3"
+	"github.com/knadh/koanf/parsers/json"
+	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
-	"github.com/urfave/cli/v3"
-
-	"github.com/nextpkg/vcfg/plugins"
-	"github.com/nextpkg/vcfg/providers"
-	"github.com/nextpkg/vcfg/slogs"
 )
 
-// Builder provides a fluent interface for constructing ConfigManager instances.
-// It allows step-by-step configuration of various sources, plugins, and options
-// before building the final ConfigManager.
+type source struct {
+	provider koanf.Provider
+	parser   koanf.Parser
+	path     string
+}
+
+// Builder configures ordered sources. Later sources override earlier ones.
+// Configure it before Build; concurrent mutation is not supported.
 type Builder[T any] struct {
-	// sources holds the configuration sources (file paths, providers, etc.)
-	sources []any
-	// plugins holds manually added plugin entries
-	plugins []plugins.PluginEntry
-	// enableWatch determines if configuration file watching should be enabled
-	enableWatch bool
-	// enablePlugin determines if plugin discovery and initialization should be enabled
-	enablePlugin bool
+	sources []source
+	watch   bool
+	tag     string
+	err     error
 }
 
-// NewBuilder creates a new Builder instance for configuration type T.
-// The builder is initialized with empty sources and plugins, ready for configuration.
-func NewBuilder[T any]() *Builder[T] {
-	return &Builder[T]{
-		sources: make([]any, 0),
-		plugins: make([]plugins.PluginEntry, 0),
-	}
-}
+func NewBuilder[T any]() *Builder[T] { return &Builder[T]{tag: "json"} }
 
-// AddFile adds a file path as a configuration source.
-// The file format will be automatically detected based on the file extension.
-// Supported formats include JSON, YAML, TOML, and others supported by koanf.
+// AddFile adds a JSON or YAML file. Unsupported extensions fail at Build.
 func (b *Builder[T]) AddFile(path string) *Builder[T] {
-	b.sources = append(b.sources, path)
-	return b
-}
-
-// AddEnv adds environment variables as a configuration source.
-// Environment variables with the specified prefix will be included,
-// with the prefix stripped and keys converted using dot notation.
-func (b *Builder[T]) AddEnv(prefix string) *Builder[T] {
-	envProvider := env.ProviderWithValue(prefix, ".", func(s string, v string) (string, any) {
-		// Remove the prefix and convert environment variable names to configuration keys
-		// e.g., APP_SERVER_PORT -> server.port
-		key := strings.TrimPrefix(s, prefix)
-		key = strings.ToLower(strings.ReplaceAll(key, "_", "."))
-		return key, v
-	})
-	b.sources = append(b.sources, envProvider)
-	return b
-}
-
-// AddProvider adds a custom koanf.Provider as a configuration source.
-// This allows integration with any provider that implements the koanf.Provider interface.
-func (b *Builder[T]) AddProvider(provider koanf.Provider) *Builder[T] {
-	b.sources = append(b.sources, provider)
-	return b
-}
-
-// AddCliFlags adds CLI flags as a configuration source using the urfave/cli library.
-// CLI flags are typically added last to ensure they override other configuration sources.
-// The flags are processed through a wrapper that handles key name mapping and flattening.
-func (b *Builder[T]) AddCliFlags(cmd *cli.Command, delim string) *Builder[T] {
-	// Create a wrapped Provider to handle key name mapping
-	cliProvider := providers.NewCliProviderWrapper(cliflagv3.Provider(cmd, delim), cmd.Name, delim)
-
-	slogs.Debug("AddCliFlags: created wrapper", "cmd", cmd.Name, "delim", delim)
-
-	b.sources = append(b.sources, cliProvider)
-	return b
-}
-
-// WithWatch enables configuration file watching for automatic reloading.
-// When enabled, the ConfigManager will monitor configuration files for changes
-// and automatically reload the configuration when modifications are detected.
-func (b *Builder[T]) WithWatch() *Builder[T] {
-	b.enableWatch = true
-	return b
-}
-
-// WithPlugin enables plugin discovery and initialization.
-// When enabled, the ConfigManager will automatically discover plugin configurations
-// in the loaded config and initialize the corresponding plugin instances.
-func (b *Builder[T]) WithPlugin() *Builder[T] {
-	b.enablePlugin = true
-	return b
-}
-
-// Build constructs and returns a ConfigManager instance based on the builder's configuration.
-// It loads the initial configuration, initializes plugins if enabled, and sets up
-// file watching if enabled.
-//
-// Parameters:
-//   - ctx: Context for plugin initialization and other operations
-//
-// Returns a fully configured ConfigManager or an error if building fails.
-func (b *Builder[T]) Build(ctx context.Context) (*ConfigManager[T], error) {
-	if len(b.sources) == 0 {
-		return nil, fmt.Errorf("at least one configuration source is required")
+	var parser koanf.Parser
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		parser = json.Parser()
+	case ".yml", ".yaml":
+		parser = yaml.Parser()
+	default:
+		b.err = fmt.Errorf("unsupported configuration extension: %s", path)
+		return b
 	}
-
-	// Create configuration manager
-	cm := newManager[T](b.sources...)
-
-	// Load initial configuration
-	cfg, err := cm.load()
+	abs, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load initial configuration: %w", err)
+		b.err = err
+		return b
 	}
-	cm.cfg.Store(cfg)
+	b.sources = append(b.sources, source{provider: file.Provider(abs), parser: parser, path: abs})
+	return b
+}
 
-	// Enable plugins
-	if b.enablePlugin {
-		err = cm.pluginManager.DiscoverAndRegister(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("failed to register plugins: %w", err)
+// AddEnv strips prefix, lowercases keys, and maps double underscores to dots.
+// APP_DATABASE__MAX_CONNS maps to database.max_conns; single underscores remain literal.
+func (b *Builder[T]) AddEnv(prefix string) *Builder[T] {
+	return b.AddProvider(env.ProviderWithValue(prefix, ".", func(key, value string) (string, any) {
+		return strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(key, prefix), "__", ".")), value
+	}), nil)
+}
+
+// AddProvider pairs a provider with an explicit parser; nil uses provider.Read().
+// Custom sources are re-read on Reload but are not automatically watched.
+func (b *Builder[T]) AddProvider(provider koanf.Provider, parser koanf.Parser) *Builder[T] {
+	if provider == nil || isNil(provider) {
+		b.err = fmt.Errorf("configuration provider is nil")
+		return b
+	}
+	b.sources = append(b.sources, source{provider: provider, parser: parser})
+	return b
+}
+
+func isNil(v any) bool {
+	switch reflect.ValueOf(v).Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return reflect.ValueOf(v).IsNil()
+	}
+	return false
+}
+
+// WithTag selects one decoding tag for all sources (default: json).
+// Use "koanf" for existing koanf-tagged structs, including squash tags.
+func (b *Builder[T]) WithTag(tag string) *Builder[T] {
+	if tag == "" {
+		b.err = fmt.Errorf("decoding tag must not be empty")
+	} else {
+		b.tag = tag
+	}
+	return b
+}
+
+// WithWatch watches only files added via AddFile. Build fails if there are none
+// or if a directory cannot be watched. The Build context bounds watcher lifetime.
+func (b *Builder[T]) WithWatch() *Builder[T] { b.watch = true; return b }
+
+func (b *Builder[T]) Build(ctx context.Context) (*ConfigManager[T], error) {
+	if b.err != nil {
+		return nil, b.err
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if reflect.TypeFor[T]().Kind() != reflect.Struct {
+		return nil, fmt.Errorf("configuration type must be a struct")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	cm := &ConfigManager[T]{sources: append([]source(nil), b.sources...), tag: b.tag, ctx: ctx, cancel: cancel, errors: make(chan error, 1)}
+	if b.watch {
+		if err := cm.prepareWatch(); err != nil {
+			cancel()
+			return nil, err
 		}
-
-		err = cm.pluginManager.Startup(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to startup plugins: %w", err)
+	}
+	if err := cm.Reload(); err != nil {
+		if cm.watcher != nil {
+			_ = cm.watcher.Close()
 		}
+		cancel()
+		return nil, err
 	}
-
-	// Enable watching
-	if b.enableWatch {
-		cm.EnableWatch()
+	if cm.watcher != nil {
+		cm.wg.Add(1)
+		go cm.watchFiles()
 	}
-
 	return cm, nil
 }
 
-// MustBuild 构建配置管理器，失败时panic
 func (b *Builder[T]) MustBuild() *ConfigManager[T] {
 	cm, err := b.Build(context.Background())
 	if err != nil {
