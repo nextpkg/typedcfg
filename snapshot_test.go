@@ -3,6 +3,9 @@ package typedcfg
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -21,11 +24,11 @@ type isolatedConfig struct {
 	Dynamic any `json:"dynamic"`
 }
 
-func TestGetIsolatesNestedSnapshots(t *testing.T) {
+func TestSnapshotIsolatesNestedSnapshots(t *testing.T) {
 	cm, err := NewBuilder[isolatedConfig]().AddProvider(rawbytes.Provider([]byte(`{"values":{"a":[1,2]},"names":["first"],"child":{"count":7},"dynamic":{"list":["original"]}}`)), json.Parser()).Build(t.Context())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, cm.Close()) }()
-	first, second := cm.Get(), cm.Get()
+	first, second := cm.Snapshot(), cm.Snapshot()
 	require.NotSame(t, first, second)
 	first.Values["a"][0] = 99
 	first.Values["extra"] = []int{5}
@@ -42,7 +45,7 @@ func TestGetIsolatesNestedSnapshots(t *testing.T) {
 	for range 8 {
 		wg.Go(func() {
 			for range 30 {
-				local := cm.Get()
+				local := cm.Snapshot()
 				local.Values["a"][0]++
 				local.Child.Count++
 				local.Names[0] = "private"
@@ -118,4 +121,53 @@ func TestUncopyableConfigurationRejected(t *testing.T) {
 	defer func() { dynamicUnsupported = false }()
 	require.ErrorContains(t, cm.Reload(), "cannot isolate")
 	require.Equal(t, old, cm.Get())
+}
+
+// Shared snapshots stay consistent while readers overlap publication.
+func TestGetSharedSnapshot(t *testing.T) {
+	type config struct {
+		Version int
+		Values  []int
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"Version":0,"Values":[0]}`), 0600))
+	cm := MustLoad[config](path)
+	defer func() { require.NoError(t, cm.Close()) }()
+	first := cm.Get()
+	require.Same(t, first, cm.Get())
+	require.Zero(t, testing.AllocsPerRun(100, func() { _ = cm.Get() }))
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+	for range 4 {
+		wg.Go(func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					cfg := cm.Get()
+					if cfg.Version != cfg.Values[0] {
+						t.Error("inconsistent snapshot")
+						return
+					}
+				}
+			}
+		})
+	}
+	defer func() { close(done); wg.Wait() }()
+	for i := 1; i <= 10; i++ {
+		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `{"Version":%d,"Values":[%d]}`, i, i), 0600))
+		require.NoError(t, cm.Reload())
+	}
+	require.NotSame(t, first, cm.Get())
+	require.Equal(t, 0, first.Values[0])
+	require.Equal(t, 10, cm.Get().Version)
+	require.NoError(t, cm.Close())
+	require.Equal(t, 10, cm.Get().Version)
+	var uninitialized ConfigManager[config]
+	require.Nil(t, uninitialized.Get())
+	require.Nil(t, uninitialized.Snapshot())
+	var absent *ConfigManager[config]
+	require.Nil(t, absent.Get())
+	require.Nil(t, absent.Snapshot())
 }

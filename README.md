@@ -244,9 +244,18 @@ for err := range cm.Errors() {
 
 `Errors()` buffers one pending asynchronous error; additional errors may be dropped until consumed. Canceling the Build context stops watching and closes the channel; `Close` also stops and joins the watcher. Without watching, the channel closes on `Close`. File failures retry on the next event or explicit `Reload`; remote sources also retry on each periodic refresh.
 
-`Get()` returns an **independent deep copy** of the current snapshot, including nested maps, slices, pointers, arrays, and interface values. Modifying one result does not affect the manager or another Get result. The copy represents one published version and remains unchanged by later reloads. If your application shares that same returned object between goroutines, it must still synchronize its own writes.
+`Get()` returns the **shared read-only snapshot** through an atomic pointer load, without copying or allocating. Do not modify any field, map, slice, pointer target, or interface-held data reachable from it: Go does not enforce read-only pointers, and writes can corrupt configuration and race with other readers. Reload publishes a new object and does not mutate old snapshots. Fetch once per request/operation so related fields use the same version.
 
-Copying allocates and costs time proportional to the configuration data; fetch once per request/operation when several fields must use the same version. Snapshot publication also copies the decoded value to detach retained provider/validator references. Configuration is data: channels, functions, unsafe pointers, synchronization primitives, and unexported fields holding non-nil mutable references cannot be safely isolated and cause Build/Reload to fail, preserving any previous snapshot. `time.Time` is supported as a value with an immutable location. Custom providers and validators must not mutate data concurrently while loading/copying is in progress. `Close` is idempotent and safe concurrently with reads/reloads; it prevents further reloads but preserves the last snapshot. A custom provider read already in progress must finish before Close returns.
+Use `cfg := cm.Snapshot()` when you need to modify configuration locally: it returns an independent deep copy, including nested maps, slices, pointers, arrays, and interface values. Modifying that copy does not affect the manager or other readers. Sharing the same mutable copy between goroutines still requires application synchronization.
+
+```go
+current := cm.Get()       // Shared snapshot: read only.
+local := cm.Snapshot()    // Private copy: safe to edit locally.
+local.Port = 9090         // Does not change current.Port or the manager.
+```
+
+
+Explicit Snapshot calls allocate and cost time proportional to the configuration data. Snapshot publication also copies the decoded value to detach retained provider/validator references. Configuration is data: channels, functions, unsafe pointers, synchronization primitives, and unexported fields holding non-nil mutable references cannot be safely isolated and cause Build/Reload to fail, preserving any previous snapshot. `time.Time` is supported as a value with an immutable location. Custom providers and validators must not mutate data concurrently while loading/copying is in progress. `Close` is idempotent and safe concurrently with reads/reloads; it prevents further reloads but preserves the last snapshot. A custom provider read already in progress must finish before Close returns.
 
 ## Optional CLI adapter
 
