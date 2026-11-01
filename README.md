@@ -9,7 +9,6 @@ package main
 
 import (
     "fmt"
-    "log"
 
     "github.com/nextpkg/typedcfg"
 )
@@ -20,16 +19,14 @@ type Config struct {
 }
 
 func main() {
-    cm, err := typedcfg.Load[Config]("config.yaml")
-    if err != nil { log.Fatal(err) }
-    defer func() {
-    if err := cm.Close(); err != nil { log.Printf("close configuration: %v", err) }
-}()
-    fmt.Println(cm.Get().Port)
+    cfg := typedcfg.MustLoad[Config]("config.yaml").Get()
+    fmt.Println(cfg.Port)
 }
 ```
 
-`Load[Config]()` without files loads defaults and runs validation. `MustLoad` and `Builder.MustBuild` panic on errors; other load/build methods return errors.
+`MustLoad` panics if a file cannot be read, parsing fails, or validation fails, so invalid configuration stops startup immediately. For one-time loading it neither starts a watcher nor retains open files, and no `Close` is needed. Use `Load` when the caller needs to handle errors instead of panicking; both methods accept no files to load defaults and run validation.
+
+For multiple sources at startup, `NewBuilder[Config]().AddFile("config.yaml").AddEnv("APP_").MustBuild().Get()` provides the same panic-on-error behavior. Keep the manager and call `Close` (or cancel its Build context) when using `WithWatch`.
 
 ## Sources and priority
 

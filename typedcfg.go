@@ -6,6 +6,8 @@ import "context"
 
 // Load loads JSON/YAML files in order. With no files it applies defaults and validation.
 // Use NewBuilder for environment variables, custom providers, or file watching.
+// Load does not start watchers or retain open files; Close is optional for a
+// one-time startup load.
 func Load[T any](paths ...string) (*ConfigManager[T], error) {
 	b := NewBuilder[T]()
 	for _, path := range paths {
@@ -14,7 +16,10 @@ func Load[T any](paths ...string) (*ConfigManager[T], error) {
 	return b.Build(context.Background())
 }
 
-// MustLoad is Load with panic-on-error semantics.
+// MustLoad is Load with panic-on-error semantics for application startup.
+// Read, parse, default, and validation errors all panic. For one-time use:
+//
+//	cfg := typedcfg.MustLoad[Config]("config.yaml").Get()
 func MustLoad[T any](paths ...string) *ConfigManager[T] {
 	cm, err := Load[T](paths...)
 	if err != nil {

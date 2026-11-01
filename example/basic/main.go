@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
 
 	"github.com/nextpkg/typedcfg"
 )
@@ -12,14 +12,6 @@ type Config struct {
 }
 
 func main() {
-	cm, err := typedcfg.Load[Config]()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err := cm.Close(); err != nil {
-			log.Printf("close configuration: %v", err)
-		}
-	}()
-	fmt.Printf("port=%d\n", cm.Get().Port)
+	cfg := typedcfg.MustLoad[Config](os.Args[1:]...).Get()
+	fmt.Printf("port=%d\n", cfg.Port)
 }
