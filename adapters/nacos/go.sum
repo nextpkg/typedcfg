@@ -280,6 +280,8 @@ github.com/nextpkg/typedcfg v0.0.2-0.20261101073135-35ff5ab89cc4 h1:P66f2o+97soD
 github.com/nextpkg/typedcfg v0.0.2-0.20261101073135-35ff5ab89cc4/go.mod h1:wgiA5Z+ql7n2UTAiMBqqhj1uMrdORSnoP8aDMJoK5is=
 github.com/nextpkg/typedcfg v0.0.2-0.20261101075508-906eb1e7ecd5 h1:HAhEXSx29d0GHxD+KSHCK2h17zxVgwJVyBROqAdxjuk=
 github.com/nextpkg/typedcfg v0.0.2-0.20261101075508-906eb1e7ecd5/go.mod h1:wgiA5Z+ql7n2UTAiMBqqhj1uMrdORSnoP8aDMJoK5is=
+github.com/nextpkg/typedcfg v0.0.2-0.20261101090812-e02d1eaaf350 h1:cWVMQyTIl7022XZL2kKdc7drJQH3O7OXQl+K0CO8A0k=
+github.com/nextpkg/typedcfg v0.0.2-0.20261101090812-e02d1eaaf350/go.mod h1:wgiA5Z+ql7n2UTAiMBqqhj1uMrdORSnoP8aDMJoK5is=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e h1:fD57ERR4JtEqsWbfPhv4DMiApHyliiK5xCTNVSPiaAs=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

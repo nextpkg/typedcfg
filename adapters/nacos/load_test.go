@@ -80,6 +80,10 @@ func TestLoadOwnedLifecycle(t *testing.T) {
 	require.EqualValues(t, 5000, param.ClientConfig.TimeoutMs)
 	require.EqualValues(t, 18848, param.ServerConfigs[0].Port)
 	require.Equal(t, 9000, cm.Get().Port)
+	require.Same(t, cm.Get(), cm.Get())
+	private := cm.Snapshot()
+	private.Port = 9999
+	require.Equal(t, 9000, cm.Get().Port)
 	require.DirExists(t, param.ClientConfig.CacheDir)
 	client.publish("port: 9001")
 	require.Eventually(t, func() bool { return cm.Get().Port == 9001 }, time.Second, time.Millisecond)

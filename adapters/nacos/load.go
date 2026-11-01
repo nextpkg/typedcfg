@@ -55,8 +55,12 @@ type Manager[T any] struct {
 	closeErr error
 }
 
-// Get returns an independent deep copy of the latest valid configuration.
-func (m *Manager[T]) Get() *T              { return m.config.Get() }
+// Get returns the shared read-only configuration without copying.
+// Do not modify nested maps, slices or pointers; use Snapshot for a private copy.
+func (m *Manager[T]) Get() *T { return m.config.Get() }
+
+// Snapshot returns an independent deep copy for local modification.
+func (m *Manager[T]) Snapshot() *T         { return m.config.Snapshot() }
 func (m *Manager[T]) Reload() error        { return m.config.Reload() }
 func (m *Manager[T]) Errors() <-chan error { return m.config.Errors() }
 
