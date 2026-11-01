@@ -120,13 +120,19 @@ in-flight SDK call; it must return before Close completes. SDK authentication,
 cache, logging, and connection policies remain client responsibilities.
 
 The opt-in integration test publishes and removes a unique test configuration
-on a disposable **local** Nacos server; its gRPC port must be the HTTP port plus
-1000:
+on a disposable Nacos instance; its gRPC port must be the HTTP port plus 1000.
+It defaults to localhost:
 
 ```sh
 cd adapters/nacos
 TYPEDCFG_NACOS_TEST_PORT=18848 go test -race . -run TestServerIntegration -count=1
 ```
+
+For a dedicated MSE test instance, also set `TYPEDCFG_NACOS_TEST_HOST`, optional
+`TYPEDCFG_NACOS_TEST_NAMESPACE`, and the AccessKey environment variables above.
+The test credentials need read/write/delete access to group `TYPEDCFG_TEST`.
+The test waits up to 15 seconds for each published value to become readable
+before checking the provider, and removes its unique DataId during cleanup.
 
 ## Create a missing configuration file
 
