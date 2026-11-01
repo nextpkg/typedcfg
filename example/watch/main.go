@@ -3,46 +3,32 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/nextpkg/typedcfg"
 	"os"
 	"os/signal"
-	"time"
-
-	"github.com/nextpkg/typedcfg"
 )
 
 type Config struct {
-	Port int `json:"port" default:"8080" validate:"min=1,max=65535"`
+	Port int `json:"port" default:"8080"`
 }
 
 func main() {
 	if len(os.Args) != 2 {
-		log.Fatal("usage: go run ./example/watch <config.yaml>")
+		panic("usage: watch config.json")
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-	cm, err := typedcfg.NewBuilder[Config]().AddFile(os.Args[1]).WithCreateIfMissing().WithWatch().Build(ctx)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	cm, err := typedcfg.LoadContext[Config](ctx, os.Args[1], typedcfg.WithCreateIfMissing(), typedcfg.WithWatch())
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer func() {
 		if err := cm.Close(); err != nil {
-			log.Printf("close configuration: %v", err)
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case err, ok := <-cm.Errors():
-			if !ok {
-				return
-			}
-			log.Printf("reload failed: %v", err)
-		case <-ticker.C:
-			fmt.Printf("port=%d\n", cm.Get().Port)
-		}
+	fmt.Println("Initial port:", cm.Get().Port)
+	for err := range cm.Errors() {
+		fmt.Fprintln(os.Stderr, err)
 	}
 }

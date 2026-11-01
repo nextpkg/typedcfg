@@ -3,46 +3,100 @@ package typedcfg
 import (
 	"context"
 	"errors"
-	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
-	"github.com/knadh/koanf/v2"
 	"github.com/nextpkg/typedcfg/defaults"
-	"github.com/nextpkg/typedcfg/validator"
 )
 
 var ErrClosed = errors.New("configuration manager is closed")
 
-// ConfigManager publishes validated snapshots. Get is safe concurrently with
-// Reload and Close when callers treat Get results as read-only.
+// ConfigManager publishes validated snapshots. Get's entire object graph is read-only.
 type ConfigManager[T any] struct {
-	sources      []source
-	tag          string
-	cfg          atomic.Pointer[T]
-	mu           sync.Mutex
-	closed       bool
-	ctx          context.Context
-	cancel       context.CancelFunc
-	watcher      *fsnotify.Watcher
-	changes      chan error
-	stops        []func() error
-	pollInterval time.Duration
-	pollRemote   bool
-	files        map[string]struct{}
-	wg           sync.WaitGroup
-	closeOnce    sync.Once
-	errorsOnce   sync.Once
-	closeErr     error
-	errors       chan error
+	cfg      atomic.Pointer[T]
+	source   Source
+	opts     options
+	ctx      context.Context
+	cancel   context.CancelFunc
+	mu       sync.Mutex
+	closed   bool
+	once     sync.Once
+	wg       sync.WaitGroup
+	errors   chan error
+	closeErr error
 }
 
-// Get returns the shared current snapshot without copying or allocating.
-// Treat the entire object graph as read-only, including maps, slices and pointers.
-// Use Snapshot when a mutable private copy is needed. Later reloads do not modify
-// previously returned snapshots. A nil/uninitialized manager returns nil.
+func open[T any](ctx context.Context, source Source, o options) (*ConfigManager[T], error) {
+	if ctx == nil || source == nil {
+		return nil, errors.New("context and source are required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if reflect.TypeFor[T]().Kind() != reflect.Struct {
+		return nil, errors.New("configuration type must be a struct")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	cm := &ConfigManager[T]{source: source, opts: o, ctx: ctx, cancel: cancel, errors: make(chan error, 1)}
+	changes := make(chan error, 1)
+	var stop func() error
+	if o.subscribe != nil {
+		var err error
+		stop, err = o.subscribe(func(err error) {
+			select {
+			case changes <- err:
+			default:
+			}
+		})
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		if stop == nil {
+			cancel()
+			return nil, errors.New("subscription returned a nil stop function")
+		}
+	}
+	if err := cm.Reload(); err != nil {
+		cancel()
+		if stop != nil {
+			err = errors.Join(err, stop())
+		}
+		return nil, err
+	}
+	if o.watch {
+		cm.wg.Add(1)
+		go func() {
+			defer cm.wg.Done()
+			defer close(cm.errors)
+			if stop != nil {
+				defer func() { cm.closeErr = stop() }()
+			}
+			ticker := time.NewTicker(o.interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case err := <-changes:
+					if err != nil {
+						cm.report(err)
+					}
+				case <-ticker.C:
+				}
+				if err := cm.Reload(); err != nil && ctx.Err() == nil {
+					cm.report(err)
+				}
+			}
+		}()
+	}
+	return cm, nil
+}
+
+// Get returns the shared snapshot without copying. Do not modify any reachable
+// fields, slices, maps or pointers; use Snapshot for a mutable private copy.
 func (cm *ConfigManager[T]) Get() *T {
 	if cm == nil {
 		return nil
@@ -50,22 +104,20 @@ func (cm *ConfigManager[T]) Get() *T {
 	return cm.cfg.Load()
 }
 
-// Snapshot returns an independent deep copy of the current configuration.
-// Mutating it does not affect the manager or other readers. Sharing the same
-// copy between goroutines still requires synchronization for writes.
+// Snapshot deep-copies the current version for independent local modification.
 func (cm *ConfigManager[T]) Snapshot() *T {
 	if cm == nil {
 		return nil
 	}
-	snapshot, err := snapshotCopy(cm.cfg.Load())
+	value, err := snapshotCopy(cm.cfg.Load())
 	if err != nil {
 		panic("typedcfg: invalid internal snapshot: " + err.Error())
 	}
-	return snapshot
+	return value
 }
 
-// Reload re-reads all sources into a fresh configuration. Failures leave the
-// previous snapshot intact. Reloads are serialized, including automatic reloads.
+// Reload builds a fresh object and atomically publishes only after validation.
+// Manual and automatic reloads are serialized. Errors preserve the previous version.
 func (cm *ConfigManager[T]) Reload() error {
 	if cm == nil {
 		return ErrClosed
@@ -78,48 +130,38 @@ func (cm *ConfigManager[T]) Reload() error {
 	if err := cm.ctx.Err(); err != nil {
 		return err
 	}
-	k := koanf.New(".")
-	for _, src := range cm.sources {
-		provider := src.provider
-		if remote, ok := provider.(*urlProvider); ok {
-			bound := *remote
-			bound.ctx = cm.ctx
-			provider = &bound
-		}
-		if err := k.Load(provider, src.parser); err != nil {
-			name := src.path
-			if name == "" {
-				name = fmt.Sprintf("%T", src.provider)
-			}
-			return NewParseError(name, "failed to load source", err)
-		}
+	data, err := cm.source(cm.ctx)
+	if err != nil {
+		return NewParseError("source", "failed to load", err)
 	}
 	var cfg T
-	if err := defaults.SetDefaults(&cfg); err != nil {
+	if err = defaults.SetDefaults(&cfg); err != nil {
 		return NewParseError("defaults", "invalid default", err)
 	}
-	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: cm.tag}); err != nil {
-		return NewParseError("decode", "failed to decode configuration", err)
+	if err = cm.opts.decode(data, &cfg); err != nil {
+		return NewParseError("decode", "invalid configuration", err)
 	}
-	if err := validator.Validate(&cfg); err != nil {
-		return NewValidationError("validator", "invalid configuration", err)
+	if cm.opts.validate != nil {
+		if err = cm.opts.validate(&cfg); err != nil {
+			return NewValidationError("validator", "invalid configuration", err)
+		}
 	}
-	if err := cm.ctx.Err(); err != nil {
-		return err
+	if v, ok := any(&cfg).(interface{ Validate() error }); ok {
+		if err = v.Validate(); err != nil {
+			return NewValidationError("validator", "invalid configuration", err)
+		}
 	}
+	// Detach retained decoder/validator references once per successful publication.
 	snapshot, err := snapshotCopy(&cfg)
 	if err != nil {
 		return NewParseError("snapshot", "configuration cannot be isolated", err)
 	}
+	if err = cm.ctx.Err(); err != nil {
+		return err
+	}
 	cm.cfg.Store(snapshot)
 	return nil
 }
-
-// Errors reports asynchronous watch/reload failures without logging globally.
-// One pending error is buffered; additional errors may be dropped until consumed.
-// The channel closes when watching stops or Close returns.
-func (cm *ConfigManager[T]) Errors() <-chan error { return cm.errors }
-
 func (cm *ConfigManager[T]) report(err error) {
 	select {
 	case cm.errors <- err:
@@ -127,17 +169,15 @@ func (cm *ConfigManager[T]) report(err error) {
 	}
 }
 
-func (cm *ConfigManager[T]) closeErrors() { cm.errorsOnce.Do(func() { close(cm.errors) }) }
+// Errors buffers one asynchronous error; additional errors may be dropped.
+func (cm *ConfigManager[T]) Errors() <-chan error { return cm.errors }
 
-// Close stops and joins the watcher and prevents subsequent Reload calls.
-// It also cancels in-flight AddURL requests.
-// Concurrent/repeated calls are safe. Custom provider reads already in progress
-// must finish before Close returns; providers own their I/O timeouts/resources.
+// Close cancels in-flight HTTP reads, joins subscriptions and retains the last snapshot.
 func (cm *ConfigManager[T]) Close() error {
 	if cm == nil {
 		return nil
 	}
-	cm.closeOnce.Do(func() {
+	cm.once.Do(func() {
 		if cm.cancel != nil {
 			cm.cancel()
 		}
@@ -145,8 +185,8 @@ func (cm *ConfigManager[T]) Close() error {
 		cm.closed = true
 		cm.mu.Unlock()
 		cm.wg.Wait()
-		if cm.errors != nil {
-			cm.closeErrors()
+		if !cm.opts.watch && cm.errors != nil {
+			close(cm.errors)
 		}
 	})
 	return cm.closeErr

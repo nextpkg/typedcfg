@@ -2,16 +2,23 @@ package main
 
 import (
 	"fmt"
-	"os"
-
 	"github.com/nextpkg/typedcfg"
+	"os"
 )
 
 type Config struct {
-	Port int `json:"port" default:"8080" validate:"min=1,max=65535"`
+	Port int `json:"port" default:"8080"`
 }
 
 func main() {
-	cfg := typedcfg.MustLoad[Config](os.Args[1:]...).Get()
-	fmt.Printf("port=%d\n", cfg.Port)
+	if len(os.Args) != 2 {
+		panic("usage: basic config.json")
+	}
+	cm := typedcfg.MustLoad[Config](os.Args[1])
+	defer func() {
+		if err := cm.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}()
+	fmt.Println(cm.Get().Port)
 }

@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/knadh/koanf/parsers/json"
-	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +23,9 @@ type isolatedConfig struct {
 }
 
 func TestSnapshotIsolatesNestedSnapshots(t *testing.T) {
-	cm, err := NewBuilder[isolatedConfig]().AddProvider(rawbytes.Provider([]byte(`{"values":{"a":[1,2]},"names":["first"],"child":{"count":7},"dynamic":{"list":["original"]}}`)), json.Parser()).Build(t.Context())
+	cm, err := LoadSource[isolatedConfig](t.Context(), func(context.Context) ([]byte, error) {
+		return []byte(`{"values":{"a":[1,2]},"names":["first"],"child":{"count":7},"dynamic":{"list":["original"]}}`), nil
+	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, cm.Close()) }()
 	first, second := cm.Snapshot(), cm.Snapshot()
@@ -107,13 +107,13 @@ func (c *dynamicConfig) Validate() error {
 }
 
 func TestUncopyableConfigurationRejected(t *testing.T) {
-	_, err := Load[privateConfig]()
+	_, err := Load[privateConfig]("")
 	require.ErrorContains(t, err, "unexported field")
-	_, err = Load[struct{ Signal chan int }]()
+	_, err = Load[struct{ Signal chan int }]("")
 	require.ErrorContains(t, err, "cannot isolate")
-	_, err = Load[struct{ Lock sync.Mutex }]()
+	_, err = Load[struct{ Lock sync.Mutex }]("")
 	require.ErrorContains(t, err, "synchronization")
-	cm, err := Load[dynamicConfig]()
+	cm, err := Load[dynamicConfig]("")
 	require.NoError(t, err)
 	defer func() { require.NoError(t, cm.Close()) }()
 	old := cm.Get()
