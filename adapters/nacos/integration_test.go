@@ -35,8 +35,6 @@ func TestServerIntegration(t *testing.T) {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	// Avoid the SDK's process-global rotating file logger outliving TempDir.
-	logger.SetLogger(zap.NewNop().Sugar())
 	client, err := clients.NewConfigClient(vo.NacosClientParam{
 		ServerConfigs: []constant.ServerConfig{{IpAddr: host, Port: port}},
 		ClientConfig: &constant.ClientConfig{
@@ -48,6 +46,9 @@ func TestServerIntegration(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	// Client initialization installs the SDK's process-global file logger.
+	// Replace it before requests so shutdown logging cannot recreate TempDir.
+	logger.SetLogger(zap.NewNop().Sugar())
 	t.Cleanup(client.CloseClient)
 	param := vo.ConfigParam{DataId: fmt.Sprintf("typedcfg-%d.json", time.Now().UnixNano()), Group: "TYPEDCFG_TEST", Content: `{"port":9000,"name":"remote"}`, Type: "json"}
 	// Publish acknowledges persistence before every server read necessarily sees
