@@ -96,6 +96,11 @@ the provider selects DataId and Group (empty Group means `DEFAULT_GROUP`).
 The core module does not depend on the Nacos SDK. See the complete
 [Nacos example](adapters/nacos/example/main.go) for client initialization and cleanup.
 
+The adapter pins SDK v2.2.8 for static AccessKey authentication: v2.3.5 has a
+data race between RAM credential refresh and request signing. Keep race testing
+enabled when upgrading the SDK; applications can override module versions, so
+the version selected by their dependency graph also needs verification.
+
 For MSE, use the instance's connection hostname and configure RAM AccessKey
 credentials with permission to read the target namespace/configuration; ensure
 the network and access whitelist allow SDK connections (normally ports 8848 and

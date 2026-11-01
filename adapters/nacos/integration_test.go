@@ -36,7 +36,7 @@ func TestServerIntegration(t *testing.T) {
 		host = "127.0.0.1"
 	}
 	// Avoid the SDK's process-global rotating file logger outliving TempDir.
-	logger.SetLogger(&logger.NacosLogger{SugaredLogger: zap.NewNop().Sugar()})
+	logger.SetLogger(zap.NewNop().Sugar())
 	client, err := clients.NewConfigClient(vo.NacosClientParam{
 		ServerConfigs: []constant.ServerConfig{{IpAddr: host, Port: port}},
 		ClientConfig: &constant.ClientConfig{
@@ -90,7 +90,12 @@ func TestServerIntegration(t *testing.T) {
 	ok, err = client.DeleteConfig(param)
 	require.NoError(t, err)
 	require.True(t, ok)
-	waitContent("")
+	require.Eventually(t, func() bool {
+		page, err := client.SearchConfig(vo.SearchConfigParam{
+			Search: "accurate", DataId: param.DataId, Group: param.Group, PageNo: 1, PageSize: 10,
+		})
+		return err == nil && page != nil && page.TotalCount == 0
+	}, 15*time.Second, 200*time.Millisecond, "deleted configuration is still listed")
 	require.Error(t, cm.Reload())
 	require.Same(t, old, cm.Get())
 }
