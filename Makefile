@@ -9,28 +9,25 @@ LINT ?= 0
 MODULES := . advanced validator adapters/yaml adapters/filewatch adapters/nacos
 MODULE_PACKAGES := $(addsuffix /...,$(addprefix ./,$(MODULES)))
 
-# Each invocation owns a workspace, including parallel make targets. One shell
-# keeps the EXIT trap active through the command and propagates command errors.
-define with_workspace
-set -eu -o pipefail; \
-repo="$$PWD"; \
-scratch="$$(mktemp -d "$$repo/.module-check.XXXXXX")"; \
-trap 'rm -rf "$$scratch"' EXIT; \
-{ echo 'go 1.26.0'; echo 'use ('; \
-  for module in $(MODULES); do \
-    if [[ "$$module" == . ]]; then printf '"%s"\n' "$$repo"; \
-    else printf '"%s/%s"\n' "$$repo" "$$module"; fi; \
-  done; \
-  echo ')'; } > "$$scratch/go.work"; \
-export GOWORK="$$scratch/go.work"; \
-$(1)
-endef
+WORKSPACE_TARGETS := imports imports-check test vet lint deadcode test-nacos-integration
 
-define each_module
-$(call with_workspace,for module in $(MODULES); do (cd "$$repo/$$module" && $(1)); done)
-endef
+# Public targets own workspace setup/cleanup; private targets run the commands.
+# Each invocation has its own directory, so parallel targets remain isolated.
+$(WORKSPACE_TARGETS):
+	@set -eu -o pipefail; \
+	repo="$$PWD"; \
+	scratch="$$(mktemp -d "$$repo/.module-check.XXXXXX")"; \
+	trap 'rm -rf "$$scratch"' EXIT; \
+	{ echo 'go 1.26.0'; echo 'use ('; \
+	  for module in $(MODULES); do \
+	    if [[ "$$module" == . ]]; then printf '"%s"\n' "$$repo"; \
+	    else printf '"%s/%s"\n' "$$repo" "$$module"; fi; \
+	  done; \
+	  echo ')'; } > "$$scratch/go.work"; \
+	export GOWORK="$$scratch/go.work"; \
+	$(MAKE) --no-print-directory _$@
 
-.PHONY: help precommit deadcode fmt fmt-check imports import imports-check test vet lint check check-deps check-external-consumer test-nacos-integration
+.PHONY: $(addprefix _,$(WORKSPACE_TARGETS)) help precommit deadcode fmt fmt-check imports import imports-check test vet lint check check-deps check-external-consumer test-nacos-integration
 help:
 	@echo 'Targets: fmt imports (alias: import) fmt-check imports-check test vet lint deadcode precommit check'
 	@echo 'make precommit: fix imports/formatting, then check with lint; check includes deadcode'
@@ -43,24 +40,24 @@ fmt-check:
 	@files="$$(gofmt -l .)" && test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
 
 import: imports
-imports:
-	$(call with_workspace,$(GOIMPORTS) -w .)
+_imports:
+	$(GOIMPORTS) -w .
 
-imports-check:
-	@$(call with_workspace,files="$$($(GOIMPORTS) -l .)"; if [[ -n "$$files" ]]; then printf '%s\n' "$$files"; exit 1; fi)
+_imports-check:
+	@files="$$($(GOIMPORTS) -l .)" && test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
 
-test:
-	$(call each_module,go test -race ./...)
+_test:
+	@set -e; for module in $(MODULES); do (cd "$$module" && go test -race ./...); done
 
-vet:
-	$(call each_module,go vet ./...)
+_vet:
+	@set -e; for module in $(MODULES); do (cd "$$module" && go vet ./...); done
 
 # deadcode reports findings with exit status 0, so reject nonempty output too.
-deadcode:
-	@$(call with_workspace,report="$$($(DEADCODE) -test $(MODULE_PACKAGES))"; if [[ -n "$$report" ]]; then printf '%s\n' "$$report"; exit 1; fi)
+_deadcode:
+	@report="$$($(DEADCODE) -test $(MODULE_PACKAGES))" && test -z "$$report" || { printf '%s\n' "$$report"; exit 1; }
 
-lint:
-	$(call each_module,$(GOLANGCI_LINT) run ./...)
+_lint:
+	@set -e; for module in $(MODULES); do (cd "$$module" && $(GOLANGCI_LINT) run ./...); done
 
 # Apply fixes first, then run the full submission gate sequentially (also with -j).
 precommit:
@@ -93,5 +90,5 @@ check-external-consumer:
 	go mod tidy; \
 	go build ./...
 
-test-nacos-integration:
-	$(call with_workspace,cd adapters/nacos && go test -race . -run TestServerIntegration -count=1 -timeout 90s -v)
+_test-nacos-integration:
+	cd adapters/nacos && go test -race . -run TestServerIntegration -count=1 -timeout 90s -v

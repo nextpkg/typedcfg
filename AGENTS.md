@@ -26,10 +26,11 @@ Deadcode includes tests and analyzes all modules together; reports and tool
 errors fail the target. Findings describe reachability in the current build
 configuration: inspect public API and platform usage before removing code.
 
-Makefile owns the six-module list and the `with_workspace` / `each_module`
-macros. Each workspace invocation creates a private temporary directory and
-removes it on exit, including command failure. Keep this lifecycle and all
-check/build orchestration in Makefile. Do not commit a persistent go.work.
+Makefile owns the six-module list. Public workspace targets create a private
+temporary directory, run the corresponding internal `_` target, and clean up
+on exit, including command failure. Use public targets so workspace setup is
+not bypassed. Keep build/check orchestration in Makefile; do not commit a
+persistent go.work.
 
 ## CI and integrations
 
