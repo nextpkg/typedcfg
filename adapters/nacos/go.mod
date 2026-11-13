@@ -41,7 +41,7 @@ require (
 	github.com/aliyun/alibabacloud-dkms-transfer-go-sdk v0.1.8 // indirect
 	github.com/aliyun/credentials-go v1.4.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clbanning/mxj/v2 v2.5.5 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
@@ -83,7 +83,4 @@ require (
 
 require github.com/nextpkg/typedcfg/advanced v0.0.0-20261101095429-75224b861d12
 
-require (
-	github.com/nextpkg/typedcfg/validator v0.0.0-20261101095329-6a16b7085393 // indirect
-	google.golang.org/genproto v0.0.0-20261019180522-ce908d29299b
-)
+require github.com/nextpkg/typedcfg/validator v0.0.0-20261101095329-6a16b7085393 // indirect
