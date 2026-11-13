@@ -1,9 +1,9 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
-GOIMPORTS := go run golang.org/x/tools/cmd/goimports@v0.43.0
+GOIMPORTS := go run golang.org/x/tools/cmd/goimports@v0.52.0
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
-DEADCODE := go run golang.org/x/tools/cmd/deadcode@v0.43.0
+DEADCODE := go run golang.org/x/tools/cmd/deadcode@v0.52.0
 LINT ?= 0
 
 MODULES := . advanced validator adapters/yaml adapters/filewatch adapters/nacos

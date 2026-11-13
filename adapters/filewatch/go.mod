@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/nextpkg/typedcfg v0.0.2-0.20261101095134-60c3d54c47e5
+	github.com/nextpkg/typedcfg v1.0.0
 )
 
-require golang.org/x/sys v0.49.0 // indirect
+require golang.org/x/sys v0.50.0 // indirect

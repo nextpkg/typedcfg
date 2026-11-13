@@ -32,6 +32,19 @@ on exit, including command failure. Use public targets so workspace setup is
 not bypassed. Keep build/check orchestration in Makefile; do not commit a
 persistent go.work.
 
+## Dependencies
+
+Use published v1.0.0 tags for internal module requirements. The development
+workspace resolves local source; also validate affected adapters with GOWORK=off
+when changing module requirements. Keep the Go 1.26 minimum and core's
+standard-library-only runtime dependency boundary.
+
+Nacos SDK remains pinned to v2.2.8 pending validation of the RAM credential
+race described in advanced/README.md. The Nacos module also retains a genproto
+parent-module lower bound to avoid overlapping RPC packages in workspace builds;
+a tidy run alone can remove that bound, so verify both workspace and isolated
+Nacos builds before accepting dependency cleanup.
+
 ## CI and integrations
 
 `.github/workflows/test.yml` calls make for the check matrix, the external
