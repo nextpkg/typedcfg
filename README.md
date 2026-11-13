@@ -82,7 +82,7 @@ Install only capabilities used by the application.
 
 | Capability | Import / API |
 | --- | --- |
-| YAML | github.com/nextpkg/typedcfg/adapters/yaml — yaml.Option(), yaml.v3 rules and yaml tags |
+| YAML | github.com/nextpkg/typedcfg/adapters/yaml — yaml.Option() / yaml.StrictOption(), yaml.v3 rules and yaml tags |
 | File events | github.com/nextpkg/typedcfg/adapters/filewatch — filewatch.Option(path), fsnotify |
 | Validation tags | github.com/nextpkg/typedcfg/validator — validator.Option(), go-playground tags |
 | Multiple sources, environment, CLI | [advanced](advanced/README.md) — advanced.NewBuilder[T]() |

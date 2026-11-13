@@ -179,20 +179,8 @@ accept a context, so canceling Build or closing the manager cannot interrupt an
 in-flight SDK call; it must return before Close completes. SDK authentication,
 cache, logging, and connection policies remain client responsibilities.
 
-The opt-in integration test publishes and removes a unique test configuration
-on a disposable Nacos instance; its gRPC port must be the HTTP port plus 1000.
-It defaults to localhost:
-
-```sh
-cd adapters/nacos
-TYPEDCFG_NACOS_TEST_PORT=18848 go test -race . -run TestServerIntegration -count=1
-```
-
-For a dedicated MSE test instance, also set `TYPEDCFG_NACOS_TEST_HOST`, optional
-`TYPEDCFG_NACOS_TEST_NAMESPACE`, and the AccessKey environment variables above.
-The test credentials need read/write/delete access to group `TYPEDCFG_TEST`.
-The test waits up to 15 seconds for each published value to become readable
-before checking the provider, and removes its unique DataId during cleanup.
+For the opt-in Nacos integration test and its disposable-instance requirements,
+see [repository validation guidance](../AGENTS.md#ci-and-integrations).
 
 ## Create a missing configuration file
 
@@ -259,7 +247,7 @@ Explicit Snapshot calls allocate and cost time proportional to the configuration
 
 ## Optional CLI adapter
 
-The core package does not import urfave/cli. Inside a parsed `cli.Command.Action`, select flags explicitly:
+The optional `advanced/adapters/cliv3` package integrates urfave/cli. Inside a parsed `cli.Command.Action`, select flags explicitly:
 
 ```go
 builder.AddProvider(cliv3.Provider(cmd, "server.port", "enabled"), nil)
@@ -267,23 +255,11 @@ builder.AddProvider(cliv3.Provider(cmd, "server.port", "enabled"), nil)
 
 Import `github.com/nextpkg/typedcfg/advanced/adapters/cliv3`. Selected flags override configuration when urfave/cli reports them as set (`cmd.IsSet`), including values from its configured environment/file sources or programmatic `Set` calls. A flag's default `Value` alone does not override configuration; explicitly set false/zero values do. Command names are never prepended. Use canonical flag names in the selection, even if the invocation uses aliases. Unselected flags such as `--config` stay outside the config map. See the executable [CLI example](example/cli/main.go).
 
-## Examples and development
+## Examples
 
-Core examples share the root module and compile with the library:
+The [CLI example](example/cli/main.go) belongs to the advanced module.
+The [basic](../example/basic/main.go) and
+[watching](../example/watch/main.go) examples use the core API in the root module;
+they are not advanced-module examples.
 
-```sh
-go run ./example/basic
-go run ./example/cli --server.port 9090 --enabled=false
-go run ./example/watch example/watch/config.yaml
-# Or provide a new path; the watch example initializes it from defaults.
-go test ./...
-go test -race ./...
-go vet ./...
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-```
-
-The optional Nacos module has its own dependencies; run the same test, vet,
-and lint commands inside `adapters/nacos` as well. To test it against local
-core changes, run `go mod edit -replace github.com/nextpkg/typedcfg=../..`
-inside that directory, then remove the local override with
-`go mod edit -dropreplace github.com/nextpkg/typedcfg` before committing.
+Repository development and validation instructions are in [AGENTS.md](../AGENTS.md).
