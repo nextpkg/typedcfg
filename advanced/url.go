@@ -3,12 +3,13 @@ package advanced
 import (
 	"context"
 	"errors"
-	"github.com/nextpkg/typedcfg/internal/httpconfig"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/nextpkg/typedcfg/internal/httpconfig"
 
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -35,7 +36,12 @@ func (b *Builder[T]) AddURL(address string, options ...URLOptions) *Builder[T] {
 		b.err = err
 		return b
 	}
-	b.sources = append(b.sources, source{provider: p, parser: parser})
+	b.sources = append(b.sources, source{
+		provider: p, parser: parser, poll: true,
+		bindContext: func(ctx context.Context) koanf.Provider {
+			return &urlProvider{reader: p.reader, ctx: ctx}
+		},
+	})
 	return b
 }
 

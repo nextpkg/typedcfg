@@ -3,10 +3,11 @@ package advanced
 import (
 	"context"
 	"fmt"
-	"github.com/nextpkg/typedcfg"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/nextpkg/typedcfg"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/knadh/koanf/v2"
@@ -81,10 +82,8 @@ func (cm *ConfigManager[T]) Reload() error {
 	k := koanf.New(".")
 	for _, src := range cm.sources {
 		provider := src.provider
-		if remote, ok := provider.(*urlProvider); ok {
-			bound := *remote
-			bound.ctx = cm.ctx
-			provider = &bound
+		if src.bindContext != nil {
+			provider = src.bindContext(cm.ctx)
 		}
 		if err := k.Load(provider, src.parser); err != nil {
 			name := src.path
@@ -110,6 +109,9 @@ func (cm *ConfigManager[T]) Reload() error {
 	snapshot, err := snapshotCopy(&cfg)
 	if err != nil {
 		return NewParseError("snapshot", "configuration cannot be isolated", err)
+	}
+	if err := cm.ctx.Err(); err != nil {
+		return err
 	}
 	cm.cfg.Store(snapshot)
 	return nil

@@ -79,121 +79,6 @@ Only 2xx responses are decoded. HTTP errors, oversized responses, parsing failur
 
 Enable automatic HTTP updates with `AddURL(address).WithWatch().WithPollInterval(30 * time.Second)`. The interval defaults to 30 seconds and must be positive when specified. Each tick performs a full GET and reloads all sources; requests are serialized, with no overlapping polls. Failed fetches or invalid configurations preserve the last valid snapshot, report through `Errors()`, and are retried on the next tick. This is periodic polling, not server push; ETag/Last-Modified conditional requests are not used. Without `WithWatch`, URLs are fetched only at Build and explicit `Reload()`. `WithCreateIfMissing()` only creates local files; there is no disk cache or remote-file creation.
 
-## Alibaba Cloud MSE Nacos
-
-Install the optional module `github.com/nextpkg/typedcfg/adapters/nacos`:
-
-```go
-cm := nacos.MustLoad[Config]("127.0.0.1:8848", "app.yaml")
-defer cm.Close()
-cfg := cm.Get()
-```
-
-This creates the SDK client, loads and validates the configuration, and enables
-automatic updates. Startup errors panic; use `nacos.Load[Config](ctx, address,
-dataID, options...)` to handle errors. `cm.Close()` stops updates, closes the SDK
-client, and removes its temporary cache. Canceling the Load context also triggers
-cleanup; call Close to wait for it. Get, Reload, and Errors behave like the core
-manager. The core module does not import the Nacos SDK.
-
-Address is a hostname or IP with an optional port (default 8848); gRPC uses that
-port plus 1000. DataId extensions `.json`, `.yaml`, `.yml` select the parser; a
-DataId without an extension defaults to YAML. Other formats require Options.Parser.
-The default namespace is public and group is DEFAULT_GROUP. Environment variables
-are read once at startup:
-
-| Variables | Purpose |
-| --- | --- |
-| `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | MSE RAM credentials; both must be set together |
-| `NACOS_USERNAME`, `NACOS_PASSWORD` | Nacos username authentication; both must be set together |
-| `NACOS_NAMESPACE_ID`, `NACOS_GROUP` | Optional namespace ID and group |
-
-For MSE, supply the instance connection hostname and credentials authorized for
-the target namespace/configuration; ensure its network whitelist allows SDK
-connections. Environment values are literal; `${VAR}` expansion and automatic
-credential rotation are not performed.
-
-Optional settings keep the common path short:
-
-```go
-cm := nacos.MustLoad[Config]("127.0.0.1:8848", "app.yaml", nacos.Options{
-    Group: "MY_GROUP",        // Nonempty explicit values override environment defaults.
-    EnvPrefix: "APP_",        // Optional business overrides, such as APP_PORT=9090.
-    PollInterval: 5 * time.Second,
-})
-defer cm.Close()
-```
-
-The default SDK timeout is 5 seconds, with subscriptions and 30-second periodic
-refresh to recover from missed notifications. Timeout, Parser, NamespaceID and
-LogDir can also be set in Options. Each Load uses a fresh private cache and
-disables stale snapshot fallback. SDK logs remain under the user's cache directory
-at `typedcfg/nacos/log` by default (10 MiB rotation, one backup, seven-day retention).
-The SDK uses a process-global logger; applications needing full SDK control should
-use Provider instead. See the complete [watching example](../adapters/nacos/example/main.go):
-set `NACOS_ADDRESS` and `NACOS_DATA_ID`, run it, change the remote configuration,
-and observe the printed port without restarting.
-
-For existing SDK clients or advanced connection settings, retain explicit ownership:
-
-```go
-cm := typedcfg.NewBuilder[Config]().
-    AddProvider(nacos.Provider(client, "app.yaml", "DEFAULT_GROUP"), yaml.Parser()).
-    WithWatch().MustBuild()
-defer cm.Close() // Stop the manager before calling client.CloseClient().
-```
-
-Here `yaml` is `github.com/knadh/koanf/parsers/yaml`; use `json.Parser()` for JSON.
-
-The adapter pins SDK v2.2.8 for static AccessKey authentication: v2.3.5 has a
-data race between RAM credential refresh and request signing. Keep race testing
-enabled when upgrading the SDK; applications can override module versions, so
-the version selected by their dependency graph also needs verification.
-
-With Provider, Build and Reload call the SDK's `GetConfig`. Add `.WithWatch()` to the builder to
-subscribe through the SDK's `ListenConfig`; notifications automatically re-read
-all sources, validate, and publish a new snapshot. No application `Reload()` call
-is needed. `Close()` or Build-context cancellation removes subscriptions via
-`CancelListenConfig`, but does not close the caller-owned SDK client. The adapter rejects a second subscription for the same client pointer,
-DataId and Group with `nacos.ErrAlreadyWatched`, even through different Provider
-objects; a failed Build releases its reservation, and successful cancellation
-allows a new manager to subscribe. A failed cancellation retains the reservation
-to prevent overlapping ownership. Watched clients must be pointers (as the
-SDK client is). Do not also call the SDK's ListenConfig/CancelListenConfig for
-that key directly, or wrap one SDK client in multiple identities: external
-subscriptions are outside this adapter's ownership checks. Watch setup
-errors fail Build; failed reloads report through `Errors()` and preserve the last
-valid snapshot. Subscribed sources are also re-read every 30 seconds (adjust with
-`WithPollInterval`) to recover from missed notifications. SDK v2.2.8 can omit
-callbacks on deletion or recreation; periodic refresh reports missing content
-and restores automatic updates after valid content is published again. There is
-no remote creation. Empty/missing content is an error; publish `{}` explicitly
-to use defaults only. Read, parse, or validation errors preserve the previous
-snapshot. The SDK can fall back to local cache unless `DisableUseSnapShot` is
-enabled; `NotLoadCacheAtStart` alone does not disable that fallback. Existing
-SDK failover files may also override remote data. Load disables snapshot fallback and uses a fresh temporary cache directory.
-
-When using Provider, the application owns the SDK client: configure `TimeoutMs` and call
-`client.CloseClient()` after the manager is no longer used. SDK reads do not
-accept a context, so canceling Build or closing the manager cannot interrupt an
-in-flight SDK call; it must return before Close completes. SDK authentication,
-cache, logging, and connection policies remain client responsibilities.
-
-The opt-in integration test publishes and removes a unique test configuration
-on a disposable Nacos instance; its gRPC port must be the HTTP port plus 1000.
-It defaults to localhost:
-
-```sh
-cd adapters/nacos
-TYPEDCFG_NACOS_TEST_PORT=18848 go test -race . -run TestServerIntegration -count=1
-```
-
-For a dedicated MSE test instance, also set `TYPEDCFG_NACOS_TEST_HOST`, optional
-`TYPEDCFG_NACOS_TEST_NAMESPACE`, and the AccessKey environment variables above.
-The test credentials need read/write/delete access to group `TYPEDCFG_TEST`.
-The test waits up to 15 seconds for each published value to become readable
-before checking the provider, and removes its unique DataId during cleanup.
-
 ## Create a missing configuration file
 
 Use `WithCreateIfMissing()` to initialize missing files from the fixed `default` tags in your configuration struct:
@@ -259,7 +144,7 @@ Explicit Snapshot calls allocate and cost time proportional to the configuration
 
 ## Optional CLI adapter
 
-The core package does not import urfave/cli. Inside a parsed `cli.Command.Action`, select flags explicitly:
+The optional `advanced/adapters/cliv3` package integrates urfave/cli. Inside a parsed `cli.Command.Action`, select flags explicitly:
 
 ```go
 builder.AddProvider(cliv3.Provider(cmd, "server.port", "enabled"), nil)
@@ -267,23 +152,11 @@ builder.AddProvider(cliv3.Provider(cmd, "server.port", "enabled"), nil)
 
 Import `github.com/nextpkg/typedcfg/advanced/adapters/cliv3`. Selected flags override configuration when urfave/cli reports them as set (`cmd.IsSet`), including values from its configured environment/file sources or programmatic `Set` calls. A flag's default `Value` alone does not override configuration; explicitly set false/zero values do. Command names are never prepended. Use canonical flag names in the selection, even if the invocation uses aliases. Unselected flags such as `--config` stay outside the config map. See the executable [CLI example](example/cli/main.go).
 
-## Examples and development
+## Examples
 
-Core examples share the root module and compile with the library:
+The [CLI example](example/cli/main.go) belongs to the advanced module.
+The [basic](../example/basic/main.go) and
+[watching](../example/watch/main.go) examples use the core API in the root module;
+they are not advanced-module examples.
 
-```sh
-go run ./example/basic
-go run ./example/cli --server.port 9090 --enabled=false
-go run ./example/watch example/watch/config.yaml
-# Or provide a new path; the watch example initializes it from defaults.
-go test ./...
-go test -race ./...
-go vet ./...
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-```
-
-The optional Nacos module has its own dependencies; run the same test, vet,
-and lint commands inside `adapters/nacos` as well. To test it against local
-core changes, run `go mod edit -replace github.com/nextpkg/typedcfg=../..`
-inside that directory, then remove the local override with
-`go mod edit -dropreplace github.com/nextpkg/typedcfg` before committing.
+Repository development and validation instructions are in [AGENTS.md](../AGENTS.md).

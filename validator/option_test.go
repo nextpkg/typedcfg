@@ -1,8 +1,9 @@
 package validator
 
 import (
-	"github.com/nextpkg/typedcfg"
 	"testing"
+
+	"github.com/nextpkg/typedcfg"
 )
 
 func TestOptInTags(t *testing.T) {

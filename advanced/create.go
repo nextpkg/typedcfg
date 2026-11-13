@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/nextpkg/typedcfg/internal/fileutil"
 	"os"
+
+	"github.com/nextpkg/typedcfg/internal/fileutil"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/nextpkg/typedcfg/defaults"

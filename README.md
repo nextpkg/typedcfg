@@ -82,11 +82,10 @@ Install only capabilities used by the application.
 
 | Capability | Import / API |
 | --- | --- |
-| YAML | github.com/nextpkg/typedcfg/adapters/yaml — yaml.Option(), yaml.v3 rules and yaml tags |
+| YAML | github.com/nextpkg/typedcfg/adapters/yaml — yaml.Option() / yaml.StrictOption(), yaml.v3 rules and yaml tags |
 | File events | github.com/nextpkg/typedcfg/adapters/filewatch — filewatch.Option(path), fsnotify |
 | Validation tags | github.com/nextpkg/typedcfg/validator — validator.Option(), go-playground tags |
 | Multiple sources, environment, CLI | [advanced](advanced/README.md) — advanced.NewBuilder[T]() |
-| Nacos / Alibaba Cloud MSE | github.com/nextpkg/typedcfg/adapters/nacos — nacos.MustLoad[T](address, dataID) |
 
 ```go
 cm := typedcfg.MustLoad[Config]("config.yaml",
@@ -95,14 +94,15 @@ cm := typedcfg.MustLoad[Config]("config.yaml",
 
 Pass the same path to Load and filewatch.Option. Events debounce for 50ms and
 survive atomic replacement; polling remains enabled as a fallback.
+Use `yaml.StrictOption()` instead of `yaml.Option()` to reject unknown struct
+fields and additional YAML documents. Empty input still loads defaults; map keys
+remain open-ended. Invalid updates retain the previous snapshot as usual.
 Independent optional modules bring their own dependencies; core go.mod test
 dependencies are not included in a production core import.
 
 The advanced module retains the former multi-file Load, MustBuild, WithTag,
 provider/parser, environment and tag-validation behavior through koanf.
 Its CLI provider lives at github.com/nextpkg/typedcfg/advanced/adapters/cliv3.
-Nacos retains its managed-client quick start and advanced source integration;
-it still carries SDK and advanced-module dependencies.
 
 ## HTTP and extension points
 

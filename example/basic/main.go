@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/nextpkg/typedcfg"
 	"os"
+
+	"github.com/nextpkg/typedcfg"
 )
 
 type Config struct {
