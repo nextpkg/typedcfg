@@ -18,6 +18,13 @@ if [[ "${1:-}" == --each ]]; then
   for module in "${modules[@]}"; do
     (cd "$repo/$module" && "$@")
   done
+elif [[ "${1:-}" == --packages ]]; then
+  shift
+  packages=()
+  for module in "${modules[@]}"; do
+    packages+=("$repo/$module/...")
+  done
+  "$@" "${packages[@]}"
 else
   "$@"
 fi
