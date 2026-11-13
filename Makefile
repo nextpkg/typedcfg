@@ -70,4 +70,6 @@ endif
 
 # Production core dependencies must remain standard-library-only.
 check-deps:
-	@test "$$(go list -deps -f '{{if .Module}}{{.Module.Path}}{{end}}' github.com/nextpkg/typedcfg | sort -u)" = github.com/nextpkg/typedcfg
+	@modules="$$(go list -deps -f '{{if .Module}}{{.Module.Path}}{{end}}' github.com/nextpkg/typedcfg)" || exit $$?; \
+	modules="$$(printf '%s\n' "$$modules" | sort -u)" || exit $$?; \
+	test "$$modules" = github.com/nextpkg/typedcfg
