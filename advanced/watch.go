@@ -38,7 +38,7 @@ func (cm *ConfigManager[T]) prepareWatch() error {
 			cm.files[src.path] = struct{}{}
 			dirs[filepath.Dir(src.path)] = struct{}{}
 		}
-		if _, ok := src.provider.(*urlProvider); ok {
+		if src.poll {
 			cm.pollRemote = true
 		}
 	}

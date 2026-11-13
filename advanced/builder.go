@@ -17,9 +17,11 @@ import (
 )
 
 type source struct {
-	provider koanf.Provider
-	parser   koanf.Parser
-	path     string
+	provider    koanf.Provider
+	parser      koanf.Parser
+	path        string
+	bindContext func(context.Context) koanf.Provider
+	poll        bool
 }
 
 // Builder configures ordered sources. Later sources override earlier ones.
