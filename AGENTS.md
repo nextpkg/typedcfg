@@ -40,6 +40,7 @@ Nacos consumer build (`make check-external-consumer`) and the real Nacos test
 start that service or run the live integration target. Preserve this distinction
 when reporting validation; a skipped service test is not a successful live test.
 
-Keep changes focused and reuse existing tests. Add cases for important changed
+Prefer testify require/assert for concise test assertions; keep it a test-only
+dependency. Keep changes focused and reuse existing tests. Add cases for important changed
 behavior; avoid tests that only repeat implementation details. Do not weaken
 checks to hide failures. No merge or release follows from running these commands.
