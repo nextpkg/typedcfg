@@ -6,6 +6,30 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v
 DEADCODE := go run golang.org/x/tools/cmd/deadcode@v0.43.0
 LINT ?= 0
 
+MODULES := . advanced validator adapters/yaml adapters/filewatch adapters/nacos
+MODULE_PACKAGES := $(addsuffix /...,$(addprefix ./,$(MODULES)))
+
+# Each invocation owns a workspace, including parallel make targets. One shell
+# keeps the EXIT trap active through the command and propagates command errors.
+define with_workspace
+set -eu -o pipefail; \
+repo="$$PWD"; \
+scratch="$$(mktemp -d "$$repo/.module-check.XXXXXX")"; \
+trap 'rm -rf "$$scratch"' EXIT; \
+{ echo 'go 1.26.0'; echo 'use ('; \
+  for module in $(MODULES); do \
+    if [[ "$$module" == . ]]; then printf '"%s"\n' "$$repo"; \
+    else printf '"%s/%s"\n' "$$repo" "$$module"; fi; \
+  done; \
+  echo ')'; } > "$$scratch/go.work"; \
+export GOWORK="$$scratch/go.work"; \
+$(1)
+endef
+
+define each_module
+$(call with_workspace,for module in $(MODULES); do (cd "$$repo/$$module" && $(1)); done)
+endef
+
 .PHONY: help precommit deadcode fmt fmt-check imports import imports-check test vet lint check check-deps check-external-consumer test-nacos-integration
 help:
 	@echo 'Targets: fmt imports (alias: import) fmt-check imports-check test vet lint deadcode precommit check'
@@ -20,24 +44,23 @@ fmt-check:
 
 import: imports
 imports:
-	./scripts/with-modules.sh $(GOIMPORTS) -w .
+	$(call with_workspace,$(GOIMPORTS) -w .)
 
 imports-check:
-	@files="$$(./scripts/with-modules.sh $(GOIMPORTS) -l .)" && test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
+	@$(call with_workspace,files="$$($(GOIMPORTS) -l .)"; if [[ -n "$$files" ]]; then printf '%s\n' "$$files"; exit 1; fi)
 
 test:
-	./scripts/with-modules.sh --each go test -race ./...
+	$(call each_module,go test -race ./...)
 
 vet:
-	./scripts/with-modules.sh --each go vet ./...
+	$(call each_module,go vet ./...)
 
 # deadcode reports findings with exit status 0, so reject nonempty output too.
 deadcode:
-	@report="$$(./scripts/with-modules.sh --packages $(DEADCODE) -test)" || exit $$?; \
-	if [[ -n "$$report" ]]; then printf '%s\n' "$$report"; exit 1; fi
+	@$(call with_workspace,report="$$($(DEADCODE) -test $(MODULE_PACKAGES))"; if [[ -n "$$report" ]]; then printf '%s\n' "$$report"; exit 1; fi)
 
 lint:
-	./scripts/with-modules.sh --each $(GOLANGCI_LINT) run ./...
+	$(call each_module,$(GOLANGCI_LINT) run ./...)
 
 # Apply fixes first, then run the full submission gate sequentially (also with -j).
 precommit:
@@ -71,4 +94,4 @@ check-external-consumer:
 	go build ./...
 
 test-nacos-integration:
-	./scripts/with-modules.sh bash -c 'cd adapters/nacos && go test -race . -run TestServerIntegration -count=1 -timeout 90s -v'
+	$(call with_workspace,cd adapters/nacos && go test -race . -run TestServerIntegration -count=1 -timeout 90s -v)

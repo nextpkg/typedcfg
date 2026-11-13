@@ -25,11 +25,10 @@ Deadcode includes tests and analyzes all modules together; reports and tool
 errors fail the target. Findings describe reachability in the current build
 configuration: inspect public API and platform usage before removing code.
 
-`scripts/with-modules.sh` shares the six-module list and creates an ephemeral
-workspace, removed on exit. It can run once, per module (`--each`), or against
-all module packages (`--packages`). Do not commit a persistent go.work.
-Keep build/check orchestration in Makefile; use scripts for shared workspace
-lifecycle rather than duplicating the module list.
+Makefile owns the six-module list and the `with_workspace` / `each_module`
+macros. Each workspace invocation creates a private temporary directory and
+removes it on exit, including command failure. Keep this lifecycle and all
+check/build orchestration in Makefile. Do not commit a persistent go.work.
 
 ## CI and integrations
 
