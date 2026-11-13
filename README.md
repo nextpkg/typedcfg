@@ -86,7 +86,6 @@ Install only capabilities used by the application.
 | File events | github.com/nextpkg/typedcfg/adapters/filewatch — filewatch.Option(path), fsnotify |
 | Validation tags | github.com/nextpkg/typedcfg/validator — validator.Option(), go-playground tags |
 | Multiple sources, environment, CLI | [advanced](advanced/README.md) — advanced.NewBuilder[T]() |
-| Nacos / Alibaba Cloud MSE | github.com/nextpkg/typedcfg/adapters/nacos — nacos.MustLoad[T](address, dataID) |
 
 ```go
 cm := typedcfg.MustLoad[Config]("config.yaml",
@@ -104,8 +103,6 @@ dependencies are not included in a production core import.
 The advanced module retains the former multi-file Load, MustBuild, WithTag,
 provider/parser, environment and tag-validation behavior through koanf.
 Its CLI provider lives at github.com/nextpkg/typedcfg/advanced/adapters/cliv3.
-Nacos retains its managed-client quick start and advanced source integration;
-it still carries SDK and advanced-module dependencies.
 
 ## HTTP and extension points
 
