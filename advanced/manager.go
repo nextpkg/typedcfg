@@ -3,10 +3,11 @@ package advanced
 import (
 	"context"
 	"fmt"
-	"github.com/nextpkg/typedcfg"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/nextpkg/typedcfg"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/knadh/koanf/v2"

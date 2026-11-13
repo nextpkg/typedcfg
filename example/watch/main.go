@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/nextpkg/typedcfg"
 	"os"
 	"os/signal"
+
+	"github.com/nextpkg/typedcfg"
 )
 
 type Config struct {

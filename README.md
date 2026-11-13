@@ -119,3 +119,25 @@ LoadSource[T](ctx, source, options...) accepts a caller-owned byte reader;
 WithCodec supplies direct decoding/encoding, WithValidation adds validation,
 and WithSubscription registers notifications plus polling fallback.
 Registration precedes the initial read and is cleaned up on startup failure.
+
+## Development
+
+Use Go 1.26 or newer and GNU Make from the repository root. Commands that need
+module resolution create a temporary workspace for all six modules and remove
+it on exit; no persistent go.work is required. Tool versions are pinned in the
+Makefile and downloaded through go run on first use.
+
+```sh
+make fmt                  # Rewrite Go formatting
+make imports              # Rewrite formatting and imports (make import is an alias)
+make test                 # Race-enabled tests in all modules
+make vet                  # Vet all modules
+make lint                 # golangci-lint in all modules
+make check                # Tests, vet, format/import checks, core dependency boundary
+LINT=1 make check          # Include lint, as in the stable-Go CI job
+```
+
+`fmt-check` and `imports-check` report files needing changes without rewriting
+them. CI also uses `make check-external-consumer` to build the Nacos example
+outside the repository workspace, and `make test-nacos-integration` against a
+running Nacos server (`TYPEDCFG_NACOS_TEST_PORT` selects its HTTP port).

@@ -3,12 +3,13 @@ package advanced
 import (
 	"context"
 	"errors"
-	"github.com/nextpkg/typedcfg/internal/httpconfig"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/nextpkg/typedcfg/internal/httpconfig"
 
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/parsers/yaml"

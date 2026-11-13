@@ -1,11 +1,12 @@
 package filewatch
 
 import (
-	"github.com/nextpkg/typedcfg"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/nextpkg/typedcfg"
 )
 
 func TestAtomicReplacementNotification(t *testing.T) {

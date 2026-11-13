@@ -2,8 +2,9 @@ package yaml
 
 import (
 	"context"
-	"github.com/nextpkg/typedcfg"
 	"testing"
+
+	"github.com/nextpkg/typedcfg"
 )
 
 func TestDirectDecode(t *testing.T) {
