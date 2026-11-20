@@ -68,6 +68,11 @@ For time.Duration use numeric nanoseconds in JSON or a custom type/codec.
 Explicit zero/false values override defaults; missing fields retain defaults.
 See [defaults](defaults/README.md) for supported tags.
 
+Pass `typedcfg.WithStrictJSON()` to reject duplicate keys anywhere in a JSON
+document and unknown fields decoded into structs. Keys are compared after JSON
+unescaping. Struct fields retain Go's case-insensitive matching. Maps accept
+arbitrary names, and custom unmarshallers control their own field matching.
+
 WithCreateIfMissing exclusively creates missing local files from default tags
 before watching. It never overwrites files or regenerates them after deletion.
 Creation requires same-filesystem hard links and an encoder for custom codecs.
