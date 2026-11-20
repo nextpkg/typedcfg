@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 // WithStrictJSON selects the JSON codec and rejects duplicate object keys
@@ -45,7 +46,7 @@ func checkObjectKeys(decoder *json.Decoder) error {
 			}
 			name := key.(string) // Valid JSON object member names are strings.
 			if _, found := seen[name]; found {
-				return errors.New("duplicate JSON object key")
+				return fmt.Errorf("duplicate JSON object key ending at byte offset %d", decoder.InputOffset())
 			}
 			seen[name] = struct{}{}
 			if err := checkObjectKeys(decoder); err != nil {

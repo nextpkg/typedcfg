@@ -50,6 +50,39 @@ func TestStrictJSONReload(t *testing.T) {
 	}
 }
 
+type customJSONFields struct {
+	Value int
+}
+
+func (fields *customJSONFields) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Free int `json:"free"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	fields.Value = wire.Free
+	return nil
+}
+
+func TestStrictJSONCustomUnmarshaler(t *testing.T) {
+	type config struct {
+		Custom customJSONFields `json:"custom"`
+	}
+
+	data := `{"custom":{"free":1}}`
+	source := func(context.Context) ([]byte, error) { return []byte(data), nil }
+	cm, err := LoadSource[config](t.Context(), source, WithStrictJSON())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, cm.Close()) })
+	require.Equal(t, 1, cm.Get().Custom.Value)
+
+	data = `{"custom":{"free":1,"\u0066ree":2}}`
+	err = cm.Reload()
+	require.ErrorIs(t, err, &ConfigError{Type: ErrorTypeParseFailure})
+	require.ErrorContains(t, err, "duplicate JSON object key ending at byte offset 31")
+}
+
 func TestStrictJSONFileOption(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	strict, err := Load[liveConfig](path, WithStrictJSON(), WithCreateIfMissing())
