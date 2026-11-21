@@ -124,3 +124,11 @@ LoadSource[T](ctx, source, options...) accepts a caller-owned byte reader;
 WithCodec supplies direct decoding/encoding, WithValidation adds validation,
 and WithSubscription registers notifications plus polling fallback.
 Registration precedes the initial read and is cleaned up on startup failure.
+
+Use `LoadFS[T](ctx, filesystem, name, options...)` with an embedded
+filesystem (`embed.FS`) or a directory opened with `os.DirFS`. Pass a name
+relative to the filesystem root, such as `config/app.json`.
+Each reload reads the file again. Use `WithWatch()` for polling or
+`WithSubscription` for caller-provided notifications. `WithCreateIfMissing()`
+returns an error. An in-progress filesystem read runs until the filesystem
+returns, even if the context is canceled.
