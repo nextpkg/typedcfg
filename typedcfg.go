@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -189,6 +190,25 @@ func LoadContext[T any](ctx context.Context, path string, opts ...Option) (*Conf
 		}
 	}
 	return open[T](ctx, source, o)
+}
+
+// LoadFS loads a named file from a caller-owned filesystem, such as embed.FS.
+// Names follow io/fs path rules. The manager re-reads the file on reload.
+// WithCreateIfMissing returns an error. Cancellation cannot interrupt an
+// in-progress filesystem read.
+func LoadFS[T any](ctx context.Context, filesystem fs.FS, name string, opts ...Option) (*ConfigManager[T], error) {
+	if filesystem == nil {
+		return nil, errors.New("configuration filesystem is required")
+	}
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+	}
+	return LoadSource[T](ctx, func(ctx context.Context) ([]byte, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return fs.ReadFile(filesystem, name)
+	}, opts...)
 }
 
 // LoadSource loads a caller-owned source. It does not close that source.
