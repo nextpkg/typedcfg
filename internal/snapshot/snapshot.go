@@ -32,6 +32,10 @@ type copyVisit struct {
 
 var timeType = reflect.TypeFor[time.Time]()
 
+func scalar(kind reflect.Kind) bool {
+	return kind >= reflect.Bool && kind <= reflect.Complex128 || kind == reflect.String
+}
+
 func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func(string) (string, error)) (reflect.Value, error) {
 	t := v.Type()
 	if t == timeType {
@@ -77,6 +81,23 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 		out.Set(reflect.MakeMapWithSize(t, v.Len()))
 		seen[visit] = out
 		iter := v.MapRange()
+		if scalar(t.Key().Kind()) && scalar(t.Elem().Kind()) {
+			key := reflect.New(t.Key()).Elem()
+			value := reflect.New(t.Elem()).Elem()
+			for iter.Next() {
+				key.SetIterKey(iter)
+				value.SetIterValue(iter)
+				if transform != nil && value.Kind() == reflect.String {
+					text, err := transform(value.String())
+					if err != nil {
+						return reflect.Value{}, err
+					}
+					value.SetString(text)
+				}
+				out.SetMapIndex(key, value)
+			}
+			return out, nil
+		}
 		for iter.Next() {
 			key := iter.Key()
 			if transform == nil {
