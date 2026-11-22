@@ -68,8 +68,6 @@ For time.Duration use numeric nanoseconds in JSON or a custom type/codec.
 Explicit zero/false values override defaults; missing fields retain defaults.
 See [defaults](defaults/README.md) for supported tags.
 
-Pass `typedcfg.WithEnvExpansion(true)` to expand `${NAME}` once in decoded string values and defaults before validation. Expansion is off by default. It applies to nested structs and container values across codecs. Map keys stay literal. Use this with trusted configuration sources because they select process environment variables. Invalid placeholders and unset or empty variables fail the load. Failed reloads preserve the previous snapshot.
-
 Pass `typedcfg.WithStrictJSON()` to reject duplicate keys anywhere in a JSON
 document and unknown fields decoded into structs. Keys are compared after JSON
 unescaping. Struct fields retain Go's case-insensitive matching. Maps accept
@@ -82,6 +80,37 @@ An invalid generated template remains available for editing.
 
 Validate tags are **opt-in**. The core only calls custom Validate() error and any
 explicit WithValidation function; it does not silently enable a tag validator.
+
+## Environment expansion
+
+Save this as `config.json` and run the application with `export APP_NAME=orders`.
+
+```json
+{"logDir": "/srv/${APP_NAME}/logs"}
+```
+
+```go
+type Config struct {
+    LogDir string `json:"logDir"`
+}
+
+cm := typedcfg.MustLoad[Config]("config.json", typedcfg.WithEnvExpansion(true))
+defer cm.Close()
+fmt.Println(cm.Get().LogDir) // /srv/orders/logs
+
+literal := typedcfg.MustLoad[Config]("config.json") // expansion is off by default
+defer literal.Close()
+fmt.Println(literal.Get().LogDir) // /srv/${APP_NAME}/logs
+```
+
+If `APP_NAME` becomes empty or unset, `cm.Reload()` returns an error and
+`cm.Get().LogDir` still holds `/srv/orders/logs`. A malformed placeholder
+such as `${}` also fails the load.
+
+The same option works with YAML and TOML codecs. Expansion runs once before
+validation, including on defaults and nested string values. Map keys stay
+literal. Enable it for trusted configuration sources because the file selects
+which process environment variables to read.
 
 ## Optional modules
 
