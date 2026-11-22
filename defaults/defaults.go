@@ -28,12 +28,12 @@ import (
 // Inputs other than a pointer to a struct are ignored. Tag parsing errors are
 // returned; application constraints and narrowing numeric overflow are not checked.
 func SetDefaults(ptr any) error {
-	return SetDefaultsWithScalarTransform(ptr, nil)
+	return SetWithTransform(ptr, nil)
 }
 
-// SetDefaultsWithScalarTransform applies transform before parsing numeric and
+// SetWithTransform applies transform before parsing numeric and
 // boolean default tags, including durations. String defaults are assigned as-is.
-func SetDefaultsWithScalarTransform(ptr any, transform func(string) (string, error)) error {
+func SetWithTransform(ptr any, transform func(string) (string, error)) error {
 	if ptr == nil {
 		return nil
 	}
@@ -57,7 +57,7 @@ func SetDefaultsWithScalarTransform(ptr any, transform func(string) (string, err
 
 		// Handle nested structs recursively
 		if field.Kind() == reflect.Struct {
-			if err := SetDefaultsWithScalarTransform(field.Addr().Interface(), transform); err != nil {
+			if err := SetWithTransform(field.Addr().Interface(), transform); err != nil {
 				return err
 			}
 			continue
@@ -164,7 +164,7 @@ func setFieldValue(field reflect.Value, value string, transform func(string) (st
 	case reflect.Struct:
 		// Recursively handle nested structs
 		if field.CanAddr() {
-			return SetDefaultsWithScalarTransform(field.Addr().Interface(), transform)
+			return SetWithTransform(field.Addr().Interface(), transform)
 		}
 
 	case reflect.Pointer:
@@ -176,7 +176,7 @@ func setFieldValue(field reflect.Value, value string, transform func(string) (st
 		}
 		// Set the value for the pointed-to element
 		if field.Elem().Kind() == reflect.Struct {
-			return SetDefaultsWithScalarTransform(field.Interface(), transform)
+			return SetWithTransform(field.Interface(), transform)
 		} else {
 			// For non-struct pointers, set the value directly
 			return setFieldValue(field.Elem(), value, transform)

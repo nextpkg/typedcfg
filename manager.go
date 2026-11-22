@@ -141,7 +141,7 @@ func (cm *ConfigManager[T]) Reload() error {
 	if cm.opts.expandEnv {
 		transformDefault = expandEnvironment
 	}
-	if err = defaults.SetDefaultsWithScalarTransform(cfg, transformDefault); err != nil {
+	if err = defaults.SetWithTransform(cfg, transformDefault); err != nil {
 		return NewParseError("defaults", "invalid default", err)
 	}
 	if err = cm.opts.decode(data, cfg); err != nil {
