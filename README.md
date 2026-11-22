@@ -168,3 +168,23 @@ these limits, request headers or the client.
 
 Each reload reads the source again. Use `LoadContext` to bind a file or HTTP
 manager to a context. Custom sources should honor cancellation or bound I/O.
+
+### Read declared scalar keys
+
+Use `github.com/nextpkg/typedcfg/lookup` with a flat struct and a lookup
+function such as `os.LookupEnv`. Each load queries the exported fields
+with explicit JSON names. Strings, booleans, decimal integers, finite floats and Go
+durations are supported. Missing keys are omitted. An invalid value
+rejects the load and a failed reload retains the previous snapshot.
+
+```go
+type Config struct {
+    Timeout time.Duration `json:"TIMEOUT"`
+}
+source, err := lookup.Source[Config](os.LookupEnv)
+if err != nil {
+    return err
+}
+manager, err := typedcfg.LoadSource[Config](ctx, source)
+// With TIMEOUT=2s, manager.Get().Timeout is 2*time.Second on success.
+```
