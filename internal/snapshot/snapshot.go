@@ -66,6 +66,7 @@ func (c *copier) copyValue(v reflect.Value, transform func(string) (string, erro
 		}
 		visit = copyVisit{typeOf: t, ptr: v.Pointer()}
 		if v.Kind() == reflect.Slice {
+			// Slices starting at the same element can have different lengths.
 			visit.length = v.Len()
 		}
 		if previous, ok := c.seen[visit]; ok {
@@ -75,6 +76,7 @@ func (c *copier) copyValue(v reflect.Value, transform func(string) (string, erro
 	switch v.Kind() {
 	case reflect.Pointer:
 		out.Set(reflect.New(t.Elem()))
+		// Register the destination before descending so a cycle points back to it.
 		c.seen[visit] = out
 		elem, err := c.copyValue(v.Elem(), transform)
 		if err != nil {
@@ -98,6 +100,8 @@ func (c *copier) copyValue(v reflect.Value, transform func(string) (string, erro
 		out.Set(reflect.MakeMapWithSize(t, v.Len()))
 		c.seen[visit] = out
 		if transform != nil && !scalar(t.Key().Kind()) {
+			// Expansion preserves keys. A key containing a pointer can still
+			// reach the decoder's data, so publication requires a second copy.
 			c.borrowedKeys = true
 		}
 		iter := v.MapRange()

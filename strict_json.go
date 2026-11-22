@@ -55,6 +55,7 @@ func checkObjectKeys(data []byte) error {
 			}
 			raw := data[start+1 : i]
 			var name string
+			// Compare decoded names so "a" and "\u0061" count as the same key.
 			if escaped || !utf8.Valid(raw) {
 				if err := json.Unmarshal(data[start:i+1], &name); err != nil {
 					return err

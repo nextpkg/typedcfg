@@ -143,6 +143,8 @@ func (cm *ConfigManager[T]) Reload() error {
 	if err = cm.opts.decode(data, cfg); err != nil {
 		return NewParseError("decode", "invalid configuration", err)
 	}
+	// The decoder may retain cfg. Expansion can give us a private copy
+	// suitable for publication until a validator receives it.
 	isolated := false
 	if cm.opts.expandEnv {
 		expanded, detached, err := snapshot.TransformStrings(cfg, expandEnvironment)
