@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"time"
 )
@@ -78,6 +79,11 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 			out.Set(elem)
 		}
 	case reflect.Map:
+		if entries, ok := v.Interface().(map[string]string); ok && transform == nil {
+			cloned := reflect.ValueOf(maps.Clone(entries))
+			seen[visit] = cloned
+			return cloned, nil
+		}
 		out.Set(reflect.MakeMapWithSize(t, v.Len()))
 		seen[visit] = out
 		iter := v.MapRange()

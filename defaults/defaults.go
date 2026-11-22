@@ -123,6 +123,10 @@ func setFieldValue(field reflect.Value, value string) error {
 		if field.Type().Elem().Kind() == reflect.String {
 			if value != "" {
 				items := splitAndTrim(value, ",")
+				if field.Type().Elem() == reflect.TypeFor[string]() {
+					field.Set(reflect.ValueOf(items))
+					return nil
+				}
 				sliceVal := reflect.MakeSlice(field.Type(), len(items), len(items))
 				for i, item := range items {
 					sliceVal.Index(i).SetString(item)
