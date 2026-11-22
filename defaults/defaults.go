@@ -2,6 +2,7 @@
 package defaults
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -27,6 +28,12 @@ import (
 // Inputs other than a pointer to a struct are ignored. Tag parsing errors are
 // returned; application constraints and narrowing numeric overflow are not checked.
 func SetDefaults(ptr any) error {
+	return SetDefaultsWithScalarTransform(ptr, nil)
+}
+
+// SetDefaultsWithScalarTransform applies transform before parsing numeric and
+// boolean default tags, including durations. String defaults are assigned as-is.
+func SetDefaultsWithScalarTransform(ptr any, transform func(string) (string, error)) error {
 	if ptr == nil {
 		return nil
 	}
@@ -50,7 +57,7 @@ func SetDefaults(ptr any) error {
 
 		// Handle nested structs recursively
 		if field.Kind() == reflect.Struct {
-			if err := SetDefaults(field.Addr().Interface()); err != nil {
+			if err := SetDefaultsWithScalarTransform(field.Addr().Interface(), transform); err != nil {
 				return err
 			}
 			continue
@@ -67,7 +74,26 @@ func SetDefaults(ptr any) error {
 			continue
 		}
 
-		if err := setFieldValue(field, defaultValue); err != nil {
+		value := defaultValue
+		if transform != nil {
+			target := field.Type()
+			for target.Kind() == reflect.Pointer {
+				target = target.Elem()
+			}
+			switch target.Kind() {
+			case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+				var err error
+				value, err = transform(defaultValue)
+				if err != nil {
+					return fmt.Errorf("default for %s: %w", fieldType.Name, err)
+				}
+			}
+		}
+		if err := setFieldValue(field, value, transform); err != nil {
+			if value != defaultValue {
+				return fmt.Errorf("invalid expanded default for %s (%s)", fieldType.Name, field.Type())
+			}
 			return err
 		}
 	}
@@ -76,7 +102,7 @@ func SetDefaults(ptr any) error {
 }
 
 // setFieldValue parses a default tag into a supported field type.
-func setFieldValue(field reflect.Value, value string) error {
+func setFieldValue(field reflect.Value, value string, transform func(string) (string, error)) error {
 	switch field.Kind() {
 	case reflect.String:
 		field.SetString(value)
@@ -138,7 +164,7 @@ func setFieldValue(field reflect.Value, value string) error {
 	case reflect.Struct:
 		// Recursively handle nested structs
 		if field.CanAddr() {
-			return SetDefaults(field.Addr().Interface())
+			return SetDefaultsWithScalarTransform(field.Addr().Interface(), transform)
 		}
 
 	case reflect.Pointer:
@@ -150,10 +176,10 @@ func setFieldValue(field reflect.Value, value string) error {
 		}
 		// Set the value for the pointed-to element
 		if field.Elem().Kind() == reflect.Struct {
-			return SetDefaults(field.Interface())
+			return SetDefaultsWithScalarTransform(field.Interface(), transform)
 		} else {
 			// For non-struct pointers, set the value directly
-			return setFieldValue(field.Elem(), value)
+			return setFieldValue(field.Elem(), value, transform)
 		}
 	}
 

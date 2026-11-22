@@ -3,9 +3,41 @@ package typedcfg
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestEnvExpansionBeforeDefaultParsing(t *testing.T) {
+	type config struct {
+		Timeout time.Duration `default:"${CFG_TIMEOUT}"`
+		Label   string        `default:"${CFG_LABEL}"`
+	}
+	t.Setenv("CFG_TIMEOUT", "2s")
+	t.Setenv("CFG_LABEL", "${CFG_TIMEOUT}")
+	data := `{}`
+	source := func(context.Context) ([]byte, error) { return []byte(data), nil }
+	_, err := LoadSource[config](t.Context(), source)
+	require.Error(t, err)
+
+	cm, err := LoadSource[config](t.Context(), source, WithEnvExpansion(true))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, cm.Close()) })
+	require.Equal(t, 2*time.Second, cm.Get().Timeout)
+	require.Equal(t, "${CFG_TIMEOUT}", cm.Get().Label)
+
+	previous := cm.Get()
+	t.Setenv("CFG_TIMEOUT", "invalid duration")
+	require.ErrorContains(t, cm.Reload(), "Timeout")
+	require.Same(t, previous, cm.Get())
+
+	t.Setenv("CFG_TIMEOUT", "3s")
+	require.NoError(t, cm.Reload())
+	require.Equal(t, 3*time.Second, cm.Get().Timeout)
+	data = `{"Timeout":0}`
+	require.NoError(t, cm.Reload())
+	require.Zero(t, cm.Get().Timeout)
+}
 
 func TestNestedEnvReload(t *testing.T) {
 	type config struct{ Paths map[string][]string }

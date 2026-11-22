@@ -47,7 +47,7 @@ pass `WithCreateIfMissing()`. Existing files are preserved.
 | `WithCreateIfMissing()` | Create a missing local file from defaults. |
 | `WithStrictJSON()` | Reject duplicate object keys and unknown struct fields. |
 | `WithCodec(decode, encode)` | Supply a decoder and an optional encoder for file creation. |
-| `WithEnvExpansion(enabled)` | Expand `${NAME}` in string values before validation. Off by default. |
+| `WithEnvExpansion(enabled)` | Expand `${NAME}` in string values and in numeric and boolean default tags. Off by default. |
 | `WithValidation(fn)` | Run a validation function before the config’s `Validate()` method. |
 | `WithWatch()` | Enable periodic reloads. |
 | `WithPollInterval(d)` | Set the interval for enabled polling. |
@@ -132,6 +132,12 @@ The same option works with YAML and TOML codecs. Expansion runs once before
 validation, including on defaults and nested string values. Map keys stay
 literal. Enable it for trusted configuration sources because the file selects
 which process environment variables to read.
+
+Numeric and boolean default tags expand before parsing. For example, a
+`time.Duration` field with `default:"${TIMEOUT}"` gets two seconds when
+`TIMEOUT=2s`. The default must resolve to a valid value during loading, and
+an explicit value decoded from the configuration takes precedence. Use literal
+numeric and boolean tags for default-file creation.
 
 ## Optional modules
 
