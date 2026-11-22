@@ -10,9 +10,11 @@ import (
 
 func TestEnvExpansionBeforeDefaultParsing(t *testing.T) {
 	type config struct {
+		Limit   int8          `default:"${CFG_LIMIT}"`
 		Timeout time.Duration `default:"${CFG_TIMEOUT}"`
 		Label   string        `default:"${CFG_LABEL}"`
 	}
+	t.Setenv("CFG_LIMIT", "127")
 	t.Setenv("CFG_TIMEOUT", "2s")
 	t.Setenv("CFG_LABEL", "${CFG_TIMEOUT}")
 	data := `{}`
@@ -27,6 +29,10 @@ func TestEnvExpansionBeforeDefaultParsing(t *testing.T) {
 	require.Equal(t, "${CFG_TIMEOUT}", cm.Get().Label)
 
 	previous := cm.Get()
+	t.Setenv("CFG_LIMIT", "128")
+	require.ErrorContains(t, cm.Reload(), "Limit")
+	require.Same(t, previous, cm.Get())
+	t.Setenv("CFG_LIMIT", "127")
 	t.Setenv("CFG_TIMEOUT", "invalid duration")
 	require.ErrorContains(t, cm.Reload(), "Timeout")
 	require.Same(t, previous, cm.Get())
