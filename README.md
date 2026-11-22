@@ -68,6 +68,8 @@ For time.Duration use numeric nanoseconds in JSON or a custom type/codec.
 Explicit zero/false values override defaults; missing fields retain defaults.
 See [defaults](defaults/README.md) for supported tags.
 
+Pass `typedcfg.WithEnvExpansion(true)` to expand `${NAME}` once in decoded string values and defaults before validation. Expansion is off by default. It applies to nested structs and container values across codecs. Map keys stay literal. Use this with trusted configuration sources because they select process environment variables. Invalid placeholders and unset or empty variables fail the load. Failed reloads preserve the previous snapshot.
+
 Pass `typedcfg.WithStrictJSON()` to reject duplicate keys anywhere in a JSON
 document and unknown fields decoded into structs. Keys are compared after JSON
 unescaping. Struct fields retain Go's case-insensitive matching. Maps accept
@@ -117,8 +119,8 @@ Only 2xx responses are accepted. Redirects must stay on the original
 scheme/host/port and are limited to ten requests. URL userinfo and fragments
 are rejected. Headers and the client are copied when loading; request errors
 omit the full URL so signed query values are not echoed.
-Select a YAML codec explicitly for YAML URLs. No disk cache, remote writes,
-environment expansion or credential rotation is provided.
+Select a YAML codec explicitly for YAML URLs. No disk cache, remote writes
+or credential rotation is provided.
 
 LoadSource[T](ctx, source, options...) accepts a caller-owned byte reader;
 WithCodec supplies direct decoding/encoding, WithValidation adds validation,

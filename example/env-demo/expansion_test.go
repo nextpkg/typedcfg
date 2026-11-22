@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"reflect"
-	"regexp"
+
 	"strings"
 	"testing"
 
@@ -17,52 +15,6 @@ import (
 
 type settings struct {
 	Path string `json:"path" yaml:"path" toml:"path"`
-}
-
-var nameRE = regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_]*$")
-
-func expand(s string) (string, error) {
-	var out strings.Builder
-	for {
-		prefix, tail, found := strings.Cut(s, "${")
-		out.WriteString(prefix)
-		if !found {
-			return out.String(), nil
-		}
-		name, rest, closed := strings.Cut(tail, "}")
-		if !closed || !nameRE.MatchString(name) {
-			return "", fmt.Errorf("invalid environment placeholder")
-		}
-		value, ok := os.LookupEnv(name)
-		if !ok {
-			return "", fmt.Errorf("unset variable %s", name)
-		}
-		out.WriteString(value)
-		s = rest
-	}
-}
-
-func codec(decode typedcfg.Decoder, enabled bool) typedcfg.Decoder {
-	return func(data []byte, target any) error {
-		if err := decode(data, target); err != nil {
-			return err
-		}
-		if enabled {
-			cfg := reflect.ValueOf(target).Elem()
-			for i := 0; i < cfg.NumField(); i++ {
-				field := cfg.Field(i)
-				if field.Kind() != reflect.String || !field.CanSet() {
-					continue
-				}
-				expanded, err := expand(field.String())
-				if err != nil {
-					return err
-				}
-				field.SetString(expanded)
-			}
-		}
-		return nil
-	}
 }
 
 func TestFormats(t *testing.T) {
@@ -81,7 +33,7 @@ func TestFormats(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/enabled=%t", tc.name, enabled), func(t *testing.T) {
 				data := tc.input
 				src := func(context.Context) ([]byte, error) { return []byte(data), nil }
-				cm, err := typedcfg.LoadSource[settings](t.Context(), src, typedcfg.WithCodec(codec(tc.decode, enabled), nil))
+				cm, err := typedcfg.LoadSource[settings](t.Context(), src, typedcfg.WithCodec(tc.decode, nil), typedcfg.WithEnvExpansion(enabled))
 				if err != nil {
 					t.Fatal(err)
 				}
