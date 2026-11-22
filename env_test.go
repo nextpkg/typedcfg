@@ -22,3 +22,31 @@ func TestNestedEnvReload(t *testing.T) {
 	require.Error(t, cm.Reload())
 	require.Same(t, old, cm.Get())
 }
+
+func TestExpandedSnapshotIsolatedFromRetainedReferences(t *testing.T) {
+	type config struct{ Names map[*string]string }
+	key := "original"
+	var retained *config
+	decode := func(_ []byte, dst any) error {
+		dst.(*config).Names = map[*string]string{&key: "value"}
+		return nil
+	}
+	for _, validate := range []bool{false, true} {
+		opts := []Option{WithEnvExpansion(true), WithCodec(decode, nil)}
+		if validate {
+			opts = append(opts, WithValidation(func(v any) error { retained = v.(*config); return nil }))
+		}
+		key = "original"
+		cm, err := LoadSource[config](t.Context(), func(context.Context) ([]byte, error) { return nil, nil }, opts...)
+		require.NoError(t, err)
+		key = "changed"
+		if validate {
+			clear(retained.Names)
+		}
+		require.Len(t, cm.Get().Names, 1)
+		for k := range cm.Get().Names {
+			require.Equal(t, "original", *k)
+		}
+		require.NoError(t, cm.Close())
+	}
+}

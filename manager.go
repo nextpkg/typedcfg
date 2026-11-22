@@ -143,32 +143,38 @@ func (cm *ConfigManager[T]) Reload() error {
 	if err = cm.opts.decode(data, cfg); err != nil {
 		return NewParseError("decode", "invalid configuration", err)
 	}
+	isolated := false
 	if cm.opts.expandEnv {
-		expanded, err := snapshot.TransformStrings(cfg, expandEnvironment)
+		expanded, detached, err := snapshot.TransformStrings(cfg, expandEnvironment)
 		if err != nil {
 			return NewParseError("environment", "invalid configuration", err)
 		}
 		cfg = expanded
+		isolated = detached
 	}
 	if cm.opts.validate != nil {
+		isolated = false
 		if err = cm.opts.validate(cfg); err != nil {
 			return NewValidationError("validator", "invalid configuration", err)
 		}
 	}
 	if v, ok := any(cfg).(interface{ Validate() error }); ok {
+		isolated = false
 		if err = v.Validate(); err != nil {
 			return NewValidationError("validator", "invalid configuration", err)
 		}
 	}
-	// Detach retained decoder/validator references once per successful publication.
-	snapshot, err := snapshotCopy(cfg)
-	if err != nil {
-		return NewParseError("snapshot", "configuration cannot be isolated", err)
+	// Validation callbacks may retain the config they receive.
+	if !isolated {
+		cfg, err = snapshotCopy(cfg)
+		if err != nil {
+			return NewParseError("snapshot", "configuration cannot be isolated", err)
+		}
 	}
 	if err = cm.ctx.Err(); err != nil {
 		return err
 	}
-	cm.cfg.Store(snapshot)
+	cm.cfg.Store(cfg)
 	return nil
 }
 func (cm *ConfigManager[T]) report(err error) {

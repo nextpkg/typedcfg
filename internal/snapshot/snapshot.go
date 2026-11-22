@@ -10,19 +10,27 @@ import (
 // Copy isolates mutable storage, including values held in interfaces.
 // It handles pointer, map, and slice cycles within one returned copy.
 func Copy[T any](value *T) (*T, error) {
-	return TransformStrings(value, nil)
+	result, _, err := TransformStrings(value, nil)
+	return result, err
 }
 
-// TransformStrings copies the configuration and transforms exported string values.
-func TransformStrings[T any](value *T, transform func(string) (string, error)) (*T, error) {
+// TransformStrings reports whether the copy is isolated from its input.
+// Expansion leaves map keys literal, including any pointers reachable from a key.
+func TransformStrings[T any](value *T, transform func(string) (string, error)) (*T, bool, error) {
 	if value == nil {
-		return nil, nil
+		return nil, true, nil
 	}
-	copy, err := copyValue(reflect.ValueOf(value), make(map[copyVisit]reflect.Value), transform)
+	c := copier{seen: make(map[copyVisit]reflect.Value)}
+	result, err := c.copyValue(reflect.ValueOf(value), transform)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return copy.Interface().(*T), nil
+	return result.Interface().(*T), !c.borrowedKeys, nil
+}
+
+type copier struct {
+	seen         map[copyVisit]reflect.Value
+	borrowedKeys bool
 }
 
 type copyVisit struct {
@@ -37,7 +45,7 @@ func scalar(kind reflect.Kind) bool {
 	return kind >= reflect.Bool && kind <= reflect.Complex128 || kind == reflect.String
 }
 
-func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func(string) (string, error)) (reflect.Value, error) {
+func (c *copier) copyValue(v reflect.Value, transform func(string) (string, error)) (reflect.Value, error) {
 	t := v.Type()
 	if t == timeType {
 		// time.Time's shared Location is immutable through its public API.
@@ -45,6 +53,9 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 	}
 	if t.PkgPath() == "sync" || t.PkgPath() == "sync/atomic" {
 		return reflect.Value{}, fmt.Errorf("snapshot cannot copy synchronization type %s", t)
+	}
+	if scalar(v.Kind()) && (transform == nil || v.Kind() != reflect.String) {
+		return v, nil
 	}
 	out := reflect.New(t).Elem()
 	var visit copyVisit
@@ -57,22 +68,22 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 		if v.Kind() == reflect.Slice {
 			visit.length = v.Len()
 		}
-		if previous, ok := seen[visit]; ok {
+		if previous, ok := c.seen[visit]; ok {
 			return previous, nil
 		}
 	}
 	switch v.Kind() {
 	case reflect.Pointer:
 		out.Set(reflect.New(t.Elem()))
-		seen[visit] = out
-		elem, err := copyValue(v.Elem(), seen, transform)
+		c.seen[visit] = out
+		elem, err := c.copyValue(v.Elem(), transform)
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		out.Elem().Set(elem)
 	case reflect.Interface:
 		if !v.IsNil() {
-			elem, err := copyValue(v.Elem(), seen, transform)
+			elem, err := c.copyValue(v.Elem(), transform)
 			if err != nil {
 				return reflect.Value{}, err
 			}
@@ -81,11 +92,14 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 	case reflect.Map:
 		if entries, ok := v.Interface().(map[string]string); ok && transform == nil {
 			cloned := reflect.ValueOf(maps.Clone(entries))
-			seen[visit] = cloned
+			c.seen[visit] = cloned
 			return cloned, nil
 		}
 		out.Set(reflect.MakeMapWithSize(t, v.Len()))
-		seen[visit] = out
+		c.seen[visit] = out
+		if transform != nil && !scalar(t.Key().Kind()) {
+			c.borrowedKeys = true
+		}
 		iter := v.MapRange()
 		if scalar(t.Key().Kind()) && scalar(t.Elem().Kind()) {
 			key := reflect.New(t.Key()).Elem()
@@ -107,13 +121,13 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 		for iter.Next() {
 			key := iter.Key()
 			if transform == nil {
-				copied, err := copyValue(key, seen, nil)
+				copied, err := c.copyValue(key, nil)
 				if err != nil {
 					return reflect.Value{}, err
 				}
 				key = copied
 			}
-			value, err := copyValue(iter.Value(), seen, transform)
+			value, err := c.copyValue(iter.Value(), transform)
 			if err != nil {
 				return reflect.Value{}, err
 			}
@@ -121,7 +135,7 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 		}
 	case reflect.Slice:
 		out.Set(reflect.MakeSlice(t, v.Len(), v.Len()))
-		seen[visit] = out
+		c.seen[visit] = out
 		// Scalar elements have no mutable references. Copy their backing storage in bulk.
 		kind := t.Elem().Kind()
 		if kind >= reflect.Bool && kind <= reflect.Complex128 || kind == reflect.String && transform == nil {
@@ -131,7 +145,7 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 		fallthrough
 	case reflect.Array:
 		for i := range v.Len() {
-			value, err := copyValue(v.Index(i), seen, transform)
+			value, err := c.copyValue(v.Index(i), transform)
 			if err != nil {
 				return reflect.Value{}, err
 			}
@@ -147,16 +161,13 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 				}
 				continue
 			}
-			value, err := copyValue(v.Field(i), seen, transform)
+			value, err := c.copyValue(v.Field(i), transform)
 			if err != nil {
 				return reflect.Value{}, fmt.Errorf("%s.%s: %w", t, field.Name, err)
 			}
 			out.Field(i).Set(value)
 		}
 	case reflect.String:
-		if transform == nil {
-			return v, nil
-		}
 		text, err := transform(v.String())
 		if err != nil {
 			return reflect.Value{}, err
