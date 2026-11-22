@@ -32,6 +32,7 @@ func expandEnvironment(s string) (string, error) {
 			return "", fmt.Errorf("empty or unset environment variable %s", name)
 		}
 		out.WriteString(value)
+		// Resume in the original template so a value containing ${...} stays literal.
 		s = rest
 	}
 }

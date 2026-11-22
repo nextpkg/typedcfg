@@ -12,6 +12,11 @@
 
 ## Development and validation
 
+Start with `typedcfg.go` for loader entry points and options, then follow
+`ConfigManager.Reload` in `manager.go` from source read to atomic publication.
+`Get` shares the published snapshot. `Snapshot` uses `internal/snapshot` to
+return a mutable copy. The advanced loader uses the same copier.
+
 Use Go 1.26+ and GNU Make at the repository root. Run `make help` for targets.
 Before committing, run `make precommit`: it fixes formatting/imports, then
 runs all-module race tests, vet, lint, read-only formatting/import checks,

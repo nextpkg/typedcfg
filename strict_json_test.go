@@ -97,3 +97,11 @@ func TestStrictJSONFileOption(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, permissive.Close()) })
 	require.Equal(t, 2, permissive.Get().Port)
 }
+
+func TestStrictJSONKeyScanSkipsStringContents(t *testing.T) {
+	data := []byte(`[{"x" : "braces }{ and escaped quote \" :"}, {"x":1}]`)
+	var value any
+	require.NoError(t, decodeStrictJSON(data, &value))
+	data = []byte("{\"\\ufffd\":1,\"\xff\":2}")
+	require.Error(t, decodeStrictJSON(data, &value))
+}

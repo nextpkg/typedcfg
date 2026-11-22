@@ -122,9 +122,14 @@ func setFieldValue(field reflect.Value, value string) error {
 		// Handle string slices (comma-separated values)
 		if field.Type().Elem().Kind() == reflect.String {
 			if value != "" {
-				sliceVal := reflect.MakeSlice(field.Type(), 0, 0)
-				for _, item := range splitAndTrim(value, ",") {
-					sliceVal = reflect.Append(sliceVal, reflect.ValueOf(item))
+				items := splitAndTrim(value, ",")
+				if field.Type().Elem() == reflect.TypeFor[string]() {
+					field.Set(reflect.ValueOf(items))
+					return nil
+				}
+				sliceVal := reflect.MakeSlice(field.Type(), len(items), len(items))
+				for i, item := range items {
+					sliceVal.Index(i).SetString(item)
 				}
 				field.Set(sliceVal)
 			}
@@ -160,7 +165,7 @@ func splitAndTrim(s, delimiter string) []string {
 	if s == "" {
 		return nil
 	}
-	parts := make([]string, 0)
+	parts := make([]string, 0, strings.Count(s, delimiter)+1)
 	for part := range strings.SplitSeq(s, delimiter) {
 		trimmed := strings.TrimSpace(part)
 		if trimmed != "" {
