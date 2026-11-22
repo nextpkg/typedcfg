@@ -95,6 +95,12 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func
 	case reflect.Slice:
 		out.Set(reflect.MakeSlice(t, v.Len(), v.Len()))
 		seen[visit] = out
+		// Scalar elements have no mutable references. Copy their backing storage in bulk.
+		kind := t.Elem().Kind()
+		if kind >= reflect.Bool && kind <= reflect.Complex128 || kind == reflect.String && transform == nil {
+			reflect.Copy(out, v)
+			return out, nil
+		}
 		fallthrough
 	case reflect.Array:
 		for i := range v.Len() {
