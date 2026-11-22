@@ -39,6 +39,10 @@ persistent go.work.
 
 ## Dependencies
 
+Keep optional integrations in their own Go modules. Use a `Source` for
+reading or decrypting bytes and a codec for decoding those bytes into the
+configuration. This lets different sources share the same format checks.
+
 Use published v1.0.0 tags for internal module requirements. The development
 workspace resolves local source; also validate affected adapters with GOWORK=off
 when changing module requirements. Keep the Go 1.26 minimum and core's
@@ -53,3 +57,32 @@ Prefer testify require/assert for concise test assertions; keep it a test-only
 dependency. Keep changes focused and reuse existing tests. Add cases for
 important changed behavior; avoid tests that only repeat implementation details. Do not weaken
 checks to hide failures. No merge or release follows from running these commands.
+
+## Features and documentation
+
+Deliver requested features through the public loader entry points. For shared
+loader options, check initial load and reload with the relevant codecs. When
+a failed reload should preserve a snapshot, assert what callers see via `Get`.
+
+Keep the README compact. Show a small configuration, the Go call and its
+observable result. Update the loader options table when a public `With...`
+option changes. Use core code comments to explain ownership or parsing
+decisions that a reader cannot infer from the code.
+
+## Performance work
+
+For a library-wide review, follow the read, copy and reload paths through the
+core and optional modules. Compare the baseline and candidate on the same
+fixtures and toolchain. Measure the public operation as well as the hotspot,
+including allocations and time per operation. Preserve isolation when reducing
+reflection or copies. In a regression test, exercise the ownership boundary
+directly so another protective copy cannot mask a failure.
+
+Keep representative figures and a reproduction command in the README. Put
+fixture details, raw measurements and coverage limits in the PR or report.
+
+## Version tags
+
+Publish requested Go module versions with Git tags. For the root module,
+tag the intended commit as `vX.Y.Z` and verify the remote tag target. Create
+a GitHub Release only when explicitly requested.
