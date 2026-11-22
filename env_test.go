@@ -50,3 +50,34 @@ func TestExpandedSnapshotIsolatedFromRetainedReferences(t *testing.T) {
 		require.NoError(t, cm.Close())
 	}
 }
+
+type retainingEnvConfig struct{ Names map[string]string }
+
+var retainedByMethod *retainingEnvConfig
+
+func (cfg *retainingEnvConfig) Validate() error {
+	retainedByMethod = cfg
+	return nil
+}
+
+func TestExpandedSnapshotAfterValidation(t *testing.T) {
+	t.Setenv("CFG_NAME", "original")
+	source := func(context.Context) ([]byte, error) { return []byte(`{"Names":{"name":"${CFG_NAME}"}}`), nil }
+	t.Run("callback", func(t *testing.T) {
+		type config retainingEnvConfig
+		var retained *config
+		cm, err := LoadSource[config](t.Context(), source, WithEnvExpansion(true), WithValidation(func(v any) error { retained = v.(*config); return nil }))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, cm.Close()) })
+		retained.Names["name"] = "changed"
+		require.Equal(t, "original", cm.Get().Names["name"])
+	})
+	t.Run("method", func(t *testing.T) {
+		t.Cleanup(func() { retainedByMethod = nil })
+		cm, err := LoadSource[retainingEnvConfig](t.Context(), source, WithEnvExpansion(true))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, cm.Close()) })
+		retainedByMethod.Names["name"] = "changed"
+		require.Equal(t, "original", cm.Get().Names["name"])
+	})
+}

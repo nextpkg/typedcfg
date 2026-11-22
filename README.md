@@ -64,6 +64,16 @@ interval is one second for files and 30 seconds for URLs. Change it with
 `WithPollInterval` and consume watch errors from `cm.Errors()`. Close the
 manager on shutdown. See the [watch example](example/watch).
 
+## Benchmarks
+
+On an Apple M4 with Go 1.27.4, `Get()` allocated **0 B/op**. Reloading
+256 string key/value pairs from JSON took **224 allocations/op** (about
+56 KiB/op), including decoding and publishing the snapshot.
+
+```sh
+go test -run '^$' -bench 'GetCostSmall|MapReload/plain' -benchmem
+```
+
 ## Defaults and validation
 
 Missing fields retain their defaults. Explicit JSON values, including zero
