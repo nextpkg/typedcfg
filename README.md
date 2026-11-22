@@ -4,82 +4,77 @@ Typed configuration snapshots for Go 1.26+: JSON, HTTP, defaults, custom validat
 atomic reads and optional polling, with no third-party runtime dependencies in
 the core package.
 
+## Load a JSON file
+
+Save `{"port": 9000}` as `config.json`. The program prints `9000`. With `{}`
+it prints the default, `8080`.
+
 ```go
 package main
 
 import (
     "fmt"
+
     "github.com/nextpkg/typedcfg"
 )
 
 type Config struct {
     Port int `json:"port" default:"8080"`
 }
+
 func (c *Config) Validate() error {
-    if c.Port < 1 || c.Port > 65535 { return fmt.Errorf("port must be 1..65535") }
+    if c.Port < 1 || c.Port > 65535 {
+        return fmt.Errorf("port must be 1..65535")
+    }
     return nil
 }
+
 func main() {
-    cm := typedcfg.MustLoad[Config]("config.json", typedcfg.WithWatch())
-    defer func() { if err := cm.Close(); err != nil { fmt.Println(err) } }()
+    cm := typedcfg.MustLoad[Config]("config.json")
+    defer cm.Close()
     fmt.Println(cm.Get().Port)
 }
 ```
 
-MustLoad panics on startup errors. Load returns errors;
-LoadContext[T](ctx, path, options...) also binds updates to a context.
-An empty path loads only defaults. Keep the manager alive for watching and call
-Get for each operation needing the latest version.
+Use `Load` to handle startup errors or `MustLoad` to panic on failure.
+An empty path loads defaults only. To create a missing file from the defaults,
+pass `WithCreateIfMissing()`. Existing files are preserved.
 
-## Updates and ownership
+## Reload and read snapshots
 
-WithWatch polls files every second and HTTP URLs every 30 seconds;
-WithPollInterval adjusts this. Polling re-reads and decodes on each tick, without
-ETag or unchanged-content skipping. Filesystem events are an optional adapter.
+After changing the port in the file to `9100`, reload the same manager:
 
-Reload starts a fresh struct, applies default tags, decodes, runs optional
-validation and the struct's Validate() error, then publishes atomically.
-Failed reads or invalid values retain the old version; asynchronous failures
-appear on Errors() (buffer one, excess errors may be dropped).
-Consume this channel in the application's existing logging loop.
-Manual and automatic reloads are serialized.
+```go
+if err := cm.Reload(); err != nil {
+    return err
+}
+fmt.Println(cm.Get().Port) // 9100
+draft := cm.Snapshot()
+draft.Port = 3000          // private copy
+fmt.Println(cm.Get().Port) // still 9100
+```
 
-Get returns a shared **read-only** pointer without copying or allocating:
-do not modify any reachable field, map, slice or pointer target.
-Go does not enforce this rule. Snapshot returns a private deep copy for mutation.
-Sharing one mutable copy between goroutines still requires synchronization.
-Publication also copies once to detach decoder/validator references.
-Old snapshots remain valid; retaining them retains their memory.
+Each reload applies defaults, decodes and validates a fresh configuration.
+Readers see the new version only after success. Treat everything reachable
+from `Get()` as read-only and call it again to read the latest version.
+Keep configuration structs plain data, with locks and runtime caches elsewhere.
 
-Configuration must be plain data: channels, functions, unsafe pointers, locks and
-unexported fields containing non-nil mutable references are rejected.
-time.Time is supported. Keep runtime caches outside configuration structs.
-Unexported fields are not loaded by ordinary decoding or preserved across reloads.
+For automatic updates, pass `WithWatch()` at load time. The default poll
+interval is one second for files and 30 seconds for URLs. Change it with
+`WithPollInterval` and consume watch errors from `cm.Errors()`. Close the
+manager on shutdown. See the [watch example](example/watch).
 
-Close is idempotent, cancels HTTP reads, stops subscriptions and joins updates;
-it retains the last snapshot. Custom sources must honor cancellation or bound I/O.
-Do not call Reload/Close synchronously from a decoder/validator running inside Reload.
+## Defaults and validation
 
-## Defaults and formats
+Missing fields retain their defaults. Explicit JSON values, including zero
+and false, override them. The core uses Go's `encoding/json` rules. For
+`time.Duration`, supply numeric nanoseconds or use a custom codec.
+See the [supported default tags](defaults/README.md).
 
-Core decoding uses encoding/json directly: json tags, JSON numeric types and
-UnmarshalJSON apply. There is no weak conversion of strings to numbers/durations.
-For time.Duration use numeric nanoseconds in JSON or a custom type/codec.
-Explicit zero/false values override defaults; missing fields retain defaults.
-See [defaults](defaults/README.md) for supported tags.
-
-Pass `typedcfg.WithStrictJSON()` to reject duplicate keys anywhere in a JSON
-document and unknown fields decoded into structs. Keys are compared after JSON
-unescaping. Struct fields retain Go's case-insensitive matching. Maps accept
-arbitrary names, and custom unmarshallers control their own field matching.
-
-WithCreateIfMissing exclusively creates missing local files from default tags
-before watching. It never overwrites files or regenerates them after deletion.
-Creation requires same-filesystem hard links and an encoder for custom codecs.
-An invalid generated template remains available for editing.
-
-Validate tags are **opt-in**. The core only calls custom Validate() error and any
-explicit WithValidation function; it does not silently enable a tag validator.
+Pass `WithStrictJSON()` to reject duplicate keys and unknown struct fields.
+The loader calls the struct's `Validate() error` method, as in the example
+above. Use `WithValidation` for a separate validation function or the
+optional validator module for validation tags.
 
 ## Environment expansion
 
@@ -128,38 +123,22 @@ cm := typedcfg.MustLoad[Config]("config.yaml",
     yaml.Option(), filewatch.Option("config.yaml"))
 ```
 
-Pass the same path to Load and filewatch.Option. Events debounce for 50ms and
-survive atomic replacement; polling remains enabled as a fallback.
-Use `yaml.StrictOption()` instead of `yaml.Option()` to reject unknown struct
-fields and additional YAML documents. Empty input still loads defaults; map keys
-remain open-ended. Invalid updates retain the previous snapshot as usual.
-Independent optional modules bring their own dependencies; core go.mod test
-dependencies are not included in a production core import.
+Use the same file path for the loader and watcher. For YAML, choose
+`yaml.StrictOption()` to reject unknown struct fields and extra documents.
+For layered files, environment overrides or CLI flags, see the
+[advanced builder examples](advanced/README.md).
 
-The advanced module retains the former multi-file Load, MustBuild, WithTag,
-provider/parser, environment and tag-validation behavior through koanf.
-Its CLI provider lives at github.com/nextpkg/typedcfg/advanced/adapters/cliv3.
+## Other configuration sources
 
-## HTTP and extension points
+| Source | How to load it |
+| --- | --- |
+| HTTP(S) | Pass the URL to `Load[Config]`. Select a YAML codec explicitly for YAML responses. |
+| Embedded or directory filesystem | Call `LoadFS[Config](ctx, fsys, "config/app.json")` with an `embed.FS` or `os.DirFS`. The path is relative to the filesystem root. |
+| Custom source | Pass a `func(context.Context) ([]byte, error)` to `LoadSource[Config]`. Use `WithCodec` for a custom format. |
 
-Load accepts an HTTP(S) URL as its path. WithHTTP(HTTPOptions{...}) configures
-headers, client, timeout and body limit; defaults are 10 seconds and 1MiB.
-Only 2xx responses are accepted. Redirects must stay on the original
-scheme/host/port and are limited to ten requests. URL userinfo and fragments
-are rejected. Headers and the client are copied when loading; request errors
-omit the full URL so signed query values are not echoed.
-Select a YAML codec explicitly for YAML URLs. No disk cache, remote writes
-or credential rotation is provided.
+HTTP loads accept 2xx responses and allow same-origin redirects. The default
+timeout is 10 seconds and the body limit is 1 MiB. Use `WithHTTP` to configure
+these limits, request headers or the client.
 
-LoadSource[T](ctx, source, options...) accepts a caller-owned byte reader;
-WithCodec supplies direct decoding/encoding, WithValidation adds validation,
-and WithSubscription registers notifications plus polling fallback.
-Registration precedes the initial read and is cleaned up on startup failure.
-
-Use `LoadFS[T](ctx, filesystem, name, options...)` with an embedded
-filesystem (`embed.FS`) or a directory opened with `os.DirFS`. Pass a name
-relative to the filesystem root, such as `config/app.json`.
-Each reload reads the file again. Use `WithWatch()` for polling or
-`WithSubscription` for caller-provided notifications. `WithCreateIfMissing()`
-returns an error. An in-progress filesystem read runs until the filesystem
-returns, even if the context is canceled.
+Each reload reads the source again. Use `LoadContext` to bind a file or HTTP
+manager to a context. Custom sources should honor cancellation or bound I/O.
