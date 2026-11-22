@@ -1,0 +1,5 @@
+# Public test identity for these encrypted fixtures.
+
+# created: 2026-11-22T13:57:18+08:00
+# public key: age1gh48ayydus0f3td7p6038ja02qj7vszeaw0hztcfq0lrgakrqgmqh4ex6y
+AGE-SECRET-KEY-19REFRWPEMQDL0ULLZVR5JJVNTRV0U5K50DQ4HS0PZQLUFKUX4YCS8Z3GDD

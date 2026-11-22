@@ -6,7 +6,7 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v
 DEADCODE := go run golang.org/x/tools/cmd/deadcode@v0.52.0
 LINT ?= 0
 
-MODULES := . advanced validator adapters/yaml adapters/filewatch
+MODULES := . advanced validator adapters/yaml adapters/filewatch adapters/sops
 MODULE_PACKAGES := $(addsuffix /...,$(addprefix ./,$(MODULES)))
 
 WORKSPACE_TARGETS := imports imports-check test vet lint deadcode

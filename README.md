@@ -115,6 +115,7 @@ Install only capabilities used by the application.
 | --- | --- |
 | YAML | github.com/nextpkg/typedcfg/adapters/yaml — yaml.Option() / yaml.StrictOption(), yaml.v3 rules and yaml tags |
 | File events | github.com/nextpkg/typedcfg/adapters/filewatch — filewatch.Option(path), fsnotify |
+| SOPS-encrypted files | github.com/nextpkg/typedcfg/adapters/sops — sops.File(path, format) |
 | Validation tags | github.com/nextpkg/typedcfg/validator — validator.Option(), go-playground tags |
 | Multiple sources, environment, CLI | [advanced](advanced/README.md) — advanced.NewBuilder[T]() |
 
@@ -127,6 +128,28 @@ Use the same file path for the loader and watcher. For YAML, choose
 `yaml.StrictOption()` to reject unknown struct fields and extra documents.
 For layered files, environment overrides or CLI flags, see the
 [advanced builder examples](advanced/README.md).
+
+### SOPS-encrypted configuration
+
+Import `github.com/nextpkg/typedcfg/adapters/sops` and configure a decryption
+key for SOPS, for example with `SOPS_AGE_KEY_FILE`. Pass the source to
+`LoadSource` with the codec for the decrypted configuration.
+
+```go
+cm, err := typedcfg.LoadSource[Config](ctx, sops.File("config.enc.yaml", "yaml"),
+    yaml.StrictOption())
+if err != nil {
+    return err
+}
+defer cm.Close()
+```
+
+For encrypted JSON, use `sops.File("config.enc.json", "json")` with the
+default JSON decoder. For TOML encrypted with SOPS `--input-type binary
+--output-type binary`, use `sops.File("config.enc.toml", "binary")` with
+`typedcfg.WithCodec(toml.Unmarshal, toml.Marshal)` from your TOML library,
+such as `github.com/pelletier/go-toml/v2`. The source reads and decrypts the
+file again on every reload. A failed reload retains the last valid snapshot.
 
 ## Other configuration sources
 

@@ -5,7 +5,7 @@
 - Root module: standard-library-only production core, default JSON decoding,
   snapshots, reloads, HTTP/file sources and defaults.
 - Optional modules: `advanced`, `validator`, `adapters/yaml`,
-  `adapters/filewatch`. Keep their dependencies out of core.
+  `adapters/filewatch`, `adapters/sops`. Keep their dependencies out of core.
 - YAML `Option()` stays permissive. `StrictOption()` rejects unknown struct
   fields and additional documents, preserving defaults, explicit zero/false
   values and free map keys. Rejected reloads retain the last valid snapshot.
@@ -26,7 +26,7 @@ Deadcode includes tests and analyzes all modules together; reports and tool
 errors fail the target. Findings describe reachability in the current build
 configuration: inspect public API and platform usage before removing code.
 
-Makefile owns the five-module list. Public workspace targets create a private
+Makefile owns the module list. Public workspace targets create a private
 temporary directory, run the corresponding internal `_` target, and clean up
 on exit, including command failure. Use public targets so workspace setup is
 not bypassed. Keep build/check orchestration in Makefile; do not commit a
