@@ -40,6 +40,22 @@ Use `Load` to handle startup errors or `MustLoad` to panic on failure.
 An empty path loads defaults only. To create a missing file from the defaults,
 pass `WithCreateIfMissing()`. Existing files are preserved.
 
+## Loader options
+
+| Core option | Use |
+| --- | --- |
+| `WithCreateIfMissing()` | Create a missing local file from defaults. |
+| `WithStrictJSON()` | Reject duplicate object keys and unknown struct fields. |
+| `WithCodec(decode, encode)` | Supply a decoder and an optional encoder for file creation. |
+| `WithEnvExpansion(enabled)` | Expand `${NAME}` in string values before validation. Off by default. |
+| `WithValidation(fn)` | Run a validation function before the config’s `Validate()` method. |
+| `WithWatch()` | Enable periodic reloads. |
+| `WithPollInterval(d)` | Set the interval for enabled polling. |
+| `WithSubscription(subscribe)` | Reload on notifications with polling as a fallback. |
+| `WithHTTP(opts)` | Configure the client, headers, timeout and response size limit for HTTP sources. |
+
+The [advanced builder](advanced/README.md) also supports `WithTag`, `WithWatch`, `WithPollInterval` and `WithCreateIfMissing`.
+
 ## Reload and read snapshots
 
 After changing the port in the file to `9100`, reload the same manager:
