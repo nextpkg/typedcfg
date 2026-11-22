@@ -10,7 +10,7 @@ import (
 
 	"github.com/nextpkg/typedcfg/internal/snapshot"
 
-	"github.com/nextpkg/typedcfg/defaults"
+	"github.com/nextpkg/typedcfg/internal/defaulttags"
 )
 
 var ErrClosed = errors.New("configuration manager is closed")
@@ -137,7 +137,11 @@ func (cm *ConfigManager[T]) Reload() error {
 		return NewParseError("source", "failed to load", err)
 	}
 	cfg := new(T)
-	if err = defaults.SetDefaults(cfg); err != nil {
+	var transformDefault func(string) (string, error)
+	if cm.opts.expandEnv {
+		transformDefault = expandEnvironment
+	}
+	if err = defaulttags.Apply(cfg, transformDefault); err != nil {
 		return NewParseError("defaults", "invalid default", err)
 	}
 	if err = cm.opts.decode(data, cfg); err != nil {

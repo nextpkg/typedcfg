@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// WithEnvExpansion controls expansion of ${NAME} in decoded string values.
+// WithEnvExpansion controls expansion of ${NAME} in decoded string values and
+// in numeric and boolean default tags before they are parsed.
 func WithEnvExpansion(enabled bool) Option { return func(o *options) { o.expandEnv = enabled } }
 
 var nameRE = regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_]*$")
