@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nextpkg/typedcfg/internal/snapshot"
+
 	"github.com/nextpkg/typedcfg/defaults"
 )
 
@@ -134,25 +136,32 @@ func (cm *ConfigManager[T]) Reload() error {
 	if err != nil {
 		return NewParseError("source", "failed to load", err)
 	}
-	var cfg T
-	if err = defaults.SetDefaults(&cfg); err != nil {
+	cfg := new(T)
+	if err = defaults.SetDefaults(cfg); err != nil {
 		return NewParseError("defaults", "invalid default", err)
 	}
-	if err = cm.opts.decode(data, &cfg); err != nil {
+	if err = cm.opts.decode(data, cfg); err != nil {
 		return NewParseError("decode", "invalid configuration", err)
 	}
+	if cm.opts.expandEnv {
+		expanded, err := snapshot.TransformStrings(cfg, expandEnvironment)
+		if err != nil {
+			return NewParseError("environment", "invalid configuration", err)
+		}
+		cfg = expanded
+	}
 	if cm.opts.validate != nil {
-		if err = cm.opts.validate(&cfg); err != nil {
+		if err = cm.opts.validate(cfg); err != nil {
 			return NewValidationError("validator", "invalid configuration", err)
 		}
 	}
-	if v, ok := any(&cfg).(interface{ Validate() error }); ok {
+	if v, ok := any(cfg).(interface{ Validate() error }); ok {
 		if err = v.Validate(); err != nil {
 			return NewValidationError("validator", "invalid configuration", err)
 		}
 	}
 	// Detach retained decoder/validator references once per successful publication.
-	snapshot, err := snapshotCopy(&cfg)
+	snapshot, err := snapshotCopy(cfg)
 	if err != nil {
 		return NewParseError("snapshot", "configuration cannot be isolated", err)
 	}

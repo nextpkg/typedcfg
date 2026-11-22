@@ -9,10 +9,15 @@ import (
 // Copy isolates mutable storage, including values held in interfaces.
 // It handles pointer, map, and slice cycles within one returned copy.
 func Copy[T any](value *T) (*T, error) {
+	return TransformStrings(value, nil)
+}
+
+// TransformStrings copies the configuration and transforms exported string values.
+func TransformStrings[T any](value *T, transform func(string) (string, error)) (*T, error) {
 	if value == nil {
 		return nil, nil
 	}
-	copy, err := copyValue(reflect.ValueOf(value), make(map[copyVisit]reflect.Value))
+	copy, err := copyValue(reflect.ValueOf(value), make(map[copyVisit]reflect.Value), transform)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +32,7 @@ type copyVisit struct {
 
 var timeType = reflect.TypeFor[time.Time]()
 
-func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value) (reflect.Value, error) {
+func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value, transform func(string) (string, error)) (reflect.Value, error) {
 	t := v.Type()
 	if t == timeType {
 		// time.Time's shared Location is immutable through its public API.
@@ -55,14 +60,14 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value) (reflect.Value
 	case reflect.Pointer:
 		out.Set(reflect.New(t.Elem()))
 		seen[visit] = out
-		elem, err := copyValue(v.Elem(), seen)
+		elem, err := copyValue(v.Elem(), seen, transform)
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		out.Elem().Set(elem)
 	case reflect.Interface:
 		if !v.IsNil() {
-			elem, err := copyValue(v.Elem(), seen)
+			elem, err := copyValue(v.Elem(), seen, transform)
 			if err != nil {
 				return reflect.Value{}, err
 			}
@@ -73,11 +78,15 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value) (reflect.Value
 		seen[visit] = out
 		iter := v.MapRange()
 		for iter.Next() {
-			key, err := copyValue(iter.Key(), seen)
-			if err != nil {
-				return reflect.Value{}, err
+			key := iter.Key()
+			if transform == nil {
+				copied, err := copyValue(key, seen, nil)
+				if err != nil {
+					return reflect.Value{}, err
+				}
+				key = copied
 			}
-			value, err := copyValue(iter.Value(), seen)
+			value, err := copyValue(iter.Value(), seen, transform)
 			if err != nil {
 				return reflect.Value{}, err
 			}
@@ -89,7 +98,7 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value) (reflect.Value
 		fallthrough
 	case reflect.Array:
 		for i := range v.Len() {
-			value, err := copyValue(v.Index(i), seen)
+			value, err := copyValue(v.Index(i), seen, transform)
 			if err != nil {
 				return reflect.Value{}, err
 			}
@@ -105,12 +114,21 @@ func copyValue(v reflect.Value, seen map[copyVisit]reflect.Value) (reflect.Value
 				}
 				continue
 			}
-			value, err := copyValue(v.Field(i), seen)
+			value, err := copyValue(v.Field(i), seen, transform)
 			if err != nil {
 				return reflect.Value{}, fmt.Errorf("%s.%s: %w", t, field.Name, err)
 			}
 			out.Field(i).Set(value)
 		}
+	case reflect.String:
+		if transform == nil {
+			return v, nil
+		}
+		text, err := transform(v.String())
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		out.SetString(text)
 	case reflect.Chan, reflect.Func, reflect.UnsafePointer:
 		return reflect.Value{}, fmt.Errorf("snapshot cannot isolate %s", t)
 	default:

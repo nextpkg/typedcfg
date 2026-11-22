@@ -31,6 +31,7 @@ type Source func(context.Context) ([]byte, error)
 type Subscribe func(notify func(error)) (stop func() error, err error)
 type Option func(*options)
 type options struct {
+	expandEnv     bool
 	decode        Decoder
 	encode        Encoder
 	validate      func(any) error
